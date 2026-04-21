@@ -31,7 +31,9 @@ export const AssetsView = ({
   initialFolder,
   onClearInitialFolder,
   pinnedAssets = [],
-  onTogglePin
+  onTogglePin,
+  hasAdminAccess,
+  userRole
 }: { 
   key?: React.Key;
   googleAccessToken: string | null;
@@ -43,6 +45,8 @@ export const AssetsView = ({
   onClearInitialFolder?: () => void;
   pinnedAssets?: any[];
   onTogglePin?: (asset: any) => void;
+  hasAdminAccess?: boolean;
+  userRole?: string;
 }) => {
   const [gridSize, setGridSize] = useState<'list' | 'small' | 'medium' | 'large'>('medium');
   const [folderStack, setFolderStack] = useState<{id: string, name: string}[]>([{id: ROOT_FOLDER_ID, name: 'Root'}]);
@@ -56,10 +60,18 @@ export const AssetsView = ({
   }, [initialFolder, onClearInitialFolder]);
 
   const currentFolder = folderStack[folderStack.length - 1];
-  const { files, loading, fetchFiles, uploadFile: originalUpload, deleteFile: originalDelete } = useGoogleDrive(googleAccessToken, currentFolder.id, onGoogleLogout);
+  const { files, loading, fetchFiles, uploadFile: originalUpload, deleteFile: originalDelete, renameFile } = useGoogleDrive(googleAccessToken, currentFolder.id, onGoogleLogout);
+
+  const displayFiles = React.useMemo(() => {
+    // If user is a member, hide [PENDING] files
+    if (userRole === 'marketing_member') {
+      return files.filter(f => !f.name.startsWith('[PENDING] '));
+    }
+    return files;
+  }, [files, userRole]);
 
   const sortedFiles = React.useMemo(() => {
-    return [...files].sort((a, b) => {
+    return [...displayFiles].sort((a, b) => {
       // Always put folders first, regardless of sort option
       const isAFolder = a.mimeType === 'application/vnd.google-apps.folder';
       const isBFolder = b.mimeType === 'application/vnd.google-apps.folder';
@@ -83,16 +95,37 @@ export const AssetsView = ({
           return 0;
       }
     });
-  }, [files, sortOption]);
+  }, [displayFiles, sortOption]);
 
 
   const uploadFile = async (file: File) => {
     try {
-      addNotification('Upload Started', `Uploading ${file.name}...`, 'info', 'driveUploads');
-      await originalUpload(file);
-      addNotification('Upload Successful', `Successfully uploaded ${file.name}`, 'success', 'driveUploads');
+      const isMember = userRole === 'marketing_member';
+      const customName = isMember ? `[PENDING] ${file.name}` : file.name;
+      
+      const statusMsg = isMember ? `Uploading ${file.name} for approval...` : `Uploading ${file.name}...`;
+      addNotification('Upload Started', statusMsg, 'info', 'driveUploads');
+      
+      await originalUpload(file, customName);
+      
+      const successMsg = isMember 
+        ? `Successfully submitted ${file.name} for approval.` 
+        : `Successfully uploaded ${file.name}`;
+      
+      addNotification('Upload Successful', successMsg, 'success', 'driveUploads');
     } catch (err: any) {
       addNotification('Upload Failed', `Failed to upload ${file.name}: ${err.message}`, 'warning', 'driveUploads');
+    }
+  };
+
+  const handleApprove = async (fileId: string, currentName: string) => {
+    try {
+      const newName = currentName.replace('[PENDING] ', '');
+      addNotification('Approving...', `Approving ${newName}...`, 'info');
+      await renameFile(fileId, newName);
+      addNotification('Approved', `File successfully approved and listed.`, 'success');
+    } catch (err: any) {
+      addNotification('Approval Failed', err.message, 'warning');
     }
   };
 
@@ -150,15 +183,17 @@ export const AssetsView = ({
                     >
                       <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
                     </button>
-                    <a 
-                      href={`https://drive.google.com/drive/folders/1MWfdDx8uR55IKsgo9Y741BuxR-EJoesU`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
-                      title="Open Folder in Drive"
-                    >
-                      <ExternalLink className="w-5 h-5" />
-                    </a>
+                    {userRole !== 'department' && (
+                      <a 
+                        href={`https://drive.google.com/drive/folders/1MWfdDx8uR55IKsgo9Y741BuxR-EJoesU`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                        title="Open Folder in Drive"
+                      >
+                        <ExternalLink className="w-5 h-5" />
+                      </a>
+                    )}
                   </div>
                 </div>
                 <p className="text-slate-500 text-sm">Manage files directly in your shared marketing folder.</p>
@@ -186,7 +221,7 @@ export const AssetsView = ({
 
             {/* Right side: Upload and view controls */}
             <div className="flex flex-col items-end gap-3 shrink-0">
-              {googleAccessToken && <UploadZone onUpload={uploadFile} loading={loading} isSmall />}
+              {googleAccessToken && userRole !== 'department' && <UploadZone onUpload={uploadFile} loading={loading} isSmall />}
               <div className="flex flex-row items-center gap-3 w-fit">
                 <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-xl text-sm font-medium text-slate-600 focus-within:ring-2 focus-within:ring-amber-500/50 transition-all w-fit">
                   <ArrowUpDown className="w-4 h-4 text-slate-400" />
@@ -238,7 +273,9 @@ export const AssetsView = ({
               onClearInitialPreview={onClearInitialPreview}
               pinnedAssets={pinnedAssets}
               onTogglePin={onTogglePin}
-              hasAdminAccess={!!googleAccessToken}
+              hasAdminAccess={hasAdminAccess}
+              onApprove={handleApprove}
+              userRole={userRole}
             />
           </div>
           </motion.div>

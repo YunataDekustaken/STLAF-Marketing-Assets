@@ -4,6 +4,8 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useAuth, AuthProvider } from './hooks/useAuth';
+import AuthScreen from './components/AuthScreen';
 import { 
   Plus, 
   Search, 
@@ -29,13 +31,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ViewMode, RequestItem, INITIAL_REQUESTS } from './types';
-import { auth, db, googleProvider, isFirebaseConfigured } from './firebase';
-import { 
-  onAuthStateChanged, 
-  signInWithPopup, 
-  signOut, 
-  User 
-} from 'firebase/auth';
+import { db, googleProvider, isFirebaseConfigured } from './firebase';
 import { 
   doc, 
   setDoc, 
@@ -60,10 +56,9 @@ const handleFirestoreError = (error: unknown, operationType: OperationType, path
   console.error('Firestore Error: ', error, operationType, path);
 };
 
-export default function App() {
+function AppContent() {
+  const { user, profile, loading, login, logout } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>('assets');
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -132,18 +127,6 @@ export default function App() {
   const notificationRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!isFirebaseConfigured) {
-      setIsAuthReady(true);
-      return;
-    }
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setIsAuthReady(true);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
@@ -152,26 +135,6 @@ export default function App() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-      addNotification('Welcome back!', 'You have signed in successfully.', 'success');
-    } catch (err) {
-      console.error("Login failed:", err);
-      addNotification('Auth Error', 'Sign in failed. Please try again.', 'warning');
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setViewMode('assets');
-      addNotification('Account', 'You have been signed out successfully.', 'info');
-    } catch (err) {
-      console.error("Logout failed:", err);
-    }
-  };
 
   const handleGoogleAuthSuccess = (token: string, expiresAt: number) => {
     setGoogleAccessToken(token);
@@ -213,13 +176,20 @@ export default function App() {
     addNotification('Links Updated', 'Sidebar quick links have been updated.', 'success');
   };
 
-  if (!isAuthReady) {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-bg-main flex items-center justify-center">
+      <div className="min-h-screen bg-[#F5F5F4] flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-amber-600 animate-spin" />
       </div>
     );
   }
+
+  if (!user) return <AuthScreen />;
+
+  const isSupervisor = profile?.role === 'marketing_supervisor';
+  const isMember = profile?.role === 'marketing_member';
+  const isDepartment = profile?.role === 'department';
+  const hasAdminAccess = isSupervisor;
 
   return (
     <div className="flex min-h-screen bg-bg-main font-sans text-slate-900">
@@ -294,27 +264,30 @@ export default function App() {
             </AnimatePresence>
           </button>
 
-          <button 
-            onClick={() => setViewMode('requests')}
-            className={`w-full flex items-center ${isSidebarCollapsed && !isSidebarHovered ? 'justify-center' : 'gap-3 px-4'} py-3 rounded-xl font-semibold transition-all duration-300 ease-in-out ${viewMode === 'requests' ? 'bg-slate-700/50 text-amber-500 border-l-4 border-amber-500' : 'hover:bg-white/10 hover:text-white text-slate-400'}`}
-          >
-            <ClipboardList className="w-5 h-5 shrink-0" />
-            <AnimatePresence>
-              {(!isSidebarCollapsed || isSidebarHovered) && (
-                <motion.span 
-                  key="requests-text"
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: 'auto' }}
-                  exit={{ opacity: 0, width: 0 }}
-                  className="whitespace-nowrap overflow-hidden"
-                >
-                  Asset Requests
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </button>
+          {profile?.role === 'marketing_supervisor' && (
+            <button 
+              onClick={() => setViewMode('requests')}
+              className={`w-full flex items-center ${isSidebarCollapsed && !isSidebarHovered ? 'justify-center' : 'gap-3 px-4'} py-3 rounded-xl font-semibold transition-all duration-300 ease-in-out ${viewMode === 'requests' ? 'bg-slate-700/50 text-amber-500 border-l-4 border-amber-500' : 'hover:bg-white/10 hover:text-white text-slate-400'}`}
+            >
+              <ClipboardList className="w-5 h-5 shrink-0" />
+              <AnimatePresence>
+                {(!isSidebarCollapsed || isSidebarHovered) && (
+                  <motion.span 
+                    key="requests-text"
+                    initial={{ opacity: 0, width: 0 }}
+                    animate={{ opacity: 1, width: 'auto' }}
+                    exit={{ opacity: 0, width: 0 }}
+                    className="whitespace-nowrap overflow-hidden"
+                  >
+                    Asset Requests
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </button>
+          )}
           
-          <div className="pt-4 mt-4 border-t border-slate-700/50">
+          {profile?.role === 'marketing_supervisor' && (
+            <div className="pt-4 mt-4 border-t border-slate-700/50">
             <button 
               onClick={() => setViewMode('admin')}
               className={`w-full flex items-center ${isSidebarCollapsed && !isSidebarHovered ? 'justify-center' : 'gap-3 px-4'} py-3 rounded-xl font-semibold transition-all duration-300 ease-in-out ${viewMode === 'admin' ? 'bg-slate-700/50 text-amber-500 border-l-4 border-amber-500' : 'hover:bg-white/10 hover:text-white text-slate-400'}`}
@@ -329,12 +302,32 @@ export default function App() {
                     exit={{ opacity: 0, width: 0 }}
                     className="whitespace-nowrap overflow-hidden"
                   >
-                    {googleAccessToken ? 'Admin Center' : 'Admin Login'}
+                    Admin Center
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </button>
+            <button 
+              onClick={logout}
+              className={`w-full flex items-center mt-2 ${isSidebarCollapsed && !isSidebarHovered ? 'justify-center' : 'gap-3 px-4'} py-3 rounded-xl font-semibold transition-all duration-300 ease-in-out hover:bg-white/10 hover:text-white text-slate-400`}
+            >
+              <Lock className="w-5 h-5 shrink-0" />
+              <AnimatePresence>
+                {(!isSidebarCollapsed || isSidebarHovered) && (
+                  <motion.span 
+                    key="logout-text"
+                    initial={{ opacity: 0, width: 0 }}
+                    animate={{ opacity: 1, width: 'auto' }}
+                    exit={{ opacity: 0, width: 0 }}
+                    className="whitespace-nowrap overflow-hidden"
+                  >
+                    Log Out
                   </motion.span>
                 )}
               </AnimatePresence>
             </button>
           </div>
+          )}
 
           <AnimatePresence>
             {(!isSidebarCollapsed || isSidebarHovered) && (
@@ -412,13 +405,13 @@ export default function App() {
                 {(!isSidebarCollapsed || isSidebarHovered) && (
                   <div className="flex-1 min-w-0 overflow-hidden">
                     <p className="text-xs font-bold text-white truncate">{user.displayName}</p>
-                    <button onClick={handleLogout} className="text-[10px] text-slate-500 hover:text-rose-400 transition-colors">Sign Out</button>
+                    <button onClick={logout} className="text-[10px] text-slate-500 hover:text-rose-400 transition-colors">Sign Out</button>
                   </div>
                 )}
               </div>
             ) : (
               <button 
-                onClick={handleLogin}
+                onClick={login}
                 className={`w-full flex items-center justify-center ${isSidebarCollapsed && !isSidebarHovered ? 'p-2' : 'gap-2 px-4 py-2'} bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg transition-all`}
               >
                 <Lock className="w-3.5 h-3.5 shrink-0" />
@@ -549,14 +542,16 @@ export default function App() {
                 onClearInitialFolder={() => setSelectedFolder(null)}
                 pinnedAssets={pinnedAssets}
                 onTogglePin={togglePinAsset}
+                hasAdminAccess={hasAdminAccess}
+                userRole={profile?.role}
               />
-            ) : viewMode === 'requests' ? (
+            ) : viewMode === 'requests' && profile?.role === 'marketing_supervisor' ? (
               <RequestsView 
                 requests={assetRequests} 
-                hasAdminAccess={!!googleAccessToken}
+                hasAdminAccess={hasAdminAccess}
                 onStatusChange={updateRequestStatus}
               />
-            ) : (
+            ) : viewMode === 'admin' && profile?.role === 'marketing_supervisor' ? (
               <AdminView 
                 notificationSettings={notificationSettings}
                 onUpdateNotificationSettings={handleUpdateNotificationSettings}
@@ -566,6 +561,21 @@ export default function App() {
                 addNotification={addNotification}
                 quickLinks={quickLinks}
                 onUpdateQuickLinks={updateQuickLinks}
+              />
+            ) : (
+              <AssetsView 
+                key={`assets-view-restricted-${homeResetToken}`}
+                googleAccessToken={googleAccessToken}
+                onGoogleLogout={handleGoogleLogout}
+                addNotification={addNotification}
+                initialPreviewFile={selectedPreviewFile}
+                onClearInitialPreview={() => setSelectedPreviewFile(null)}
+                initialFolder={selectedFolder}
+                onClearInitialFolder={() => setSelectedFolder(null)}
+                pinnedAssets={pinnedAssets}
+                onTogglePin={togglePinAsset}
+                hasAdminAccess={hasAdminAccess}
+                userRole={profile?.role}
               />
             )}
           </div>
@@ -683,5 +693,13 @@ export default function App() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

@@ -1,29 +1,21 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
-// The user requested to use these environment variables
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: "AIzaSyDEz66O3LR6_6uqkkkiBQRDdWB0j2WwEWs",
+  authDomain: "marketing-43c62.firebaseapp.com",
+  projectId: "marketing-43c62",
+  storageBucket: "marketing-43c62.firebasestorage.app",
+  messagingSenderId: "251910226857",
+  appId: "1:251910226857:web:d52dd3aa41fa894a49fab8",
 };
 
-let isFirebaseConfigured = false;
-let app;
-let db: any = null;
-let auth: any = null;
-let googleProvider: any = null;
+export const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
+export const googleProvider = new GoogleAuthProvider();
+export const isFirebaseConfigured = true;
 
-try {
-  // Firebase setup was declined by the user. 
-  // We will stay in localStorage mode to prevent permission errors.
-  isFirebaseConfigured = false;
-} catch (e) {
-  console.error("Firebase initialization failed:", e);
-}
-
-export { isFirebaseConfigured, db, auth, googleProvider };

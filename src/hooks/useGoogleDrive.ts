@@ -43,12 +43,12 @@ export const useGoogleDrive = (
     }
   }, [accessToken, currentFolderId, onUnauthorized]);
 
-  const uploadFile = async (file: File) => {
+  const uploadFile = async (file: File, customName?: string) => {
     if (!accessToken) return;
     setLoading(true);
     try {
       const metadata = {
-        name: file.name,
+        name: customName || file.name,
         parents: [currentFolderId],
       };
 
@@ -119,5 +119,39 @@ export const useGoogleDrive = (
     }
   };
 
-  return { files, loading, error, fetchFiles, uploadFile, deleteFile };
+  const renameFile = async (fileId: string, newName: string) => {
+    if (!accessToken) return;
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ name: newName }),
+        }
+      );
+
+      if (response.status === 401) {
+        onUnauthorized?.();
+        throw new Error('Session expired. Please reconnect to Google Drive.');
+      }
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error?.message || 'Rename failed');
+      }
+      await fetchFiles();
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { files, loading, error, fetchFiles, uploadFile, deleteFile, renameFile };
 };

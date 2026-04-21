@@ -5,6 +5,19 @@
 
 export type ViewMode = 'assets' | 'admin' | 'requests';
 
+export type UserRole = 'marketing_supervisor' | 'marketing_member' | 'department';
+
+export type Department = 'Litigation' | 'Corporate' | 'HR' | 'Accounting' | 'Operations' | 'Marketing';
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  department: Department;
+  photoURL?: string;
+}
+
 export interface RequestItem {
   id: string;
   name: string;

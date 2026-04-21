@@ -15,6 +15,7 @@ import {
   Pin,
   X,
   Folder,
+  CheckCircle,
   File as FileIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -31,6 +32,8 @@ interface AssetGalleryProps {
   pinnedAssets?: any[];
   onTogglePin?: (asset: any) => void;
   hasAdminAccess?: boolean;
+  onApprove?: (fileId: string, currentName: string) => void;
+  userRole?: string;
 }
 
 const getFileIcon = (mimeType: string) => {
@@ -58,7 +61,9 @@ export const AssetGallery: React.FC<AssetGalleryProps> = ({
   onClearInitialPreview,
   pinnedAssets = [],
   onTogglePin,
-  hasAdminAccess
+  hasAdminAccess,
+  onApprove,
+  userRole
 }) => {
   const [previewFile, setPreviewFile] = useState<any | null>(null);
 
@@ -110,7 +115,14 @@ export const AssetGallery: React.FC<AssetGalleryProps> = ({
           {isFolder ? <Folder className="w-5 h-5 text-amber-400" /> : getFileIcon(file.mimeType)}
         </div>
         <div className="min-w-0">
-          <h3 className="text-sm font-bold text-slate-900 truncate" title={file.name}>{file.name}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-bold text-slate-900 truncate" title={file.name}>{file.name}</h3>
+            {file.name.startsWith('[PENDING] ') && (
+              <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded uppercase tracking-wider shrink-0">
+                Pending
+              </span>
+            )}
+          </div>
           <p className="text-[10px] text-slate-500 uppercase font-medium">
             {isFolder ? 'Folder' : (file.name.split('.').pop() || file.mimeType.split('/').pop() || 'File')}
           </p>
@@ -148,15 +160,26 @@ export const AssetGallery: React.FC<AssetGalleryProps> = ({
             <Download className="w-4 h-4" />
           </a>
         )}
-        <a
-          href={file.webViewLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
-          title="View in Drive"
-        >
-          <ExternalLink className="w-4 h-4" />
-        </a>
+        {userRole !== 'department' && (
+          <a
+            href={file.webViewLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+            title="View in Drive"
+          >
+            <ExternalLink className="w-4 h-4" />
+          </a>
+        )}
+        {hasAdminAccess && file.name.startsWith('[PENDING] ') && (
+          <button
+            onClick={() => onApprove?.(file.id, file.name)}
+            className="p-1.5 text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+            title="Approve Submission"
+          >
+            <CheckCircle className="w-4 h-4" />
+          </button>
+        )}
         {hasAdminAccess && (
           <button
             onClick={() => onDelete(file.id)}
@@ -266,18 +289,34 @@ export const AssetGallery: React.FC<AssetGalleryProps> = ({
           >
             <Eye className={gridSize === 'small' ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
           </button>
-          <a
-            href={file.webViewLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className={`bg-white rounded-lg text-slate-900 hover:bg-amber-500 transition-colors flex items-center justify-center ${
-              gridSize === 'small' ? 'p-1.5' : 'p-2'
-            }`}
-            title="View in Drive"
-          >
-            <ExternalLink className={gridSize === 'small' ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
-          </a>
+          {userRole !== 'department' && (
+            <a
+              href={file.webViewLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className={`bg-white rounded-lg text-slate-900 hover:bg-amber-500 transition-colors flex items-center justify-center ${
+                gridSize === 'small' ? 'p-1.5' : 'p-2'
+              }`}
+              title="View in Drive"
+            >
+              <ExternalLink className={gridSize === 'small' ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
+            </a>
+          )}
+          {hasAdminAccess && file.name.startsWith('[PENDING] ') && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onApprove?.(file.id, file.name);
+              }}
+              className={`bg-white rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors flex items-center justify-center ${
+                gridSize === 'small' ? 'p-1.5' : 'p-2'
+              }`}
+              title="Approve"
+            >
+              <CheckCircle className={gridSize === 'small' ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
+            </button>
+          )}
           {hasAdminAccess && (
             <button
               onClick={(e) => {
@@ -296,9 +335,16 @@ export const AssetGallery: React.FC<AssetGalleryProps> = ({
       </div>
       <div className="flex items-start justify-between gap-2 px-2">
         <div className="min-w-0">
-          <h3 className={`font-bold text-slate-900 truncate ${gridSize === 'small' ? 'text-xs' : 'text-sm'}`} title={file.name}>
-            {file.name}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className={`font-bold text-slate-900 truncate ${gridSize === 'small' ? 'text-xs' : 'text-sm'}`} title={file.name}>
+              {file.name}
+            </h3>
+            {file.name.startsWith('[PENDING] ') && (
+              <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded uppercase tracking-wider shrink-0">
+                Pending
+              </span>
+            )}
+          </div>
           <p className="text-[10px] text-slate-500 uppercase font-medium">
             {file.name.split('.').pop() || file.mimeType.split('/').pop() || 'File'}
           </p>
@@ -413,15 +459,17 @@ export const AssetGallery: React.FC<AssetGalleryProps> = ({
                   Type: <span className="font-bold text-slate-700 uppercase">{previewFile.mimeType.split('/').pop()}</span>
                 </p>
                 <div className="flex items-center gap-3">
-                  <a
-                    href={previewFile.webViewLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold transition-all flex items-center gap-2"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    Open in Drive
-                  </a>
+                  {userRole !== 'department' && (
+                    <a
+                      href={previewFile.webViewLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold transition-all flex items-center gap-2"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      Open in Drive
+                    </a>
+                  )}
                   <a
                     href={previewFile.webContentLink || previewFile.webViewLink}
                     target="_blank"

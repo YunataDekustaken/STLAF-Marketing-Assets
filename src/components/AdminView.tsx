@@ -17,7 +17,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleAuth } from './GoogleAuth';
-import { Cloud, RefreshCw } from 'lucide-react';
+import { Cloud, RefreshCw, Users as UsersIcon } from 'lucide-react';
+import { UserDirectory } from './UserDirectory';
 
 export const AdminView = ({ 
   notificationSettings,
@@ -97,6 +98,8 @@ export const AdminView = ({
           </div>
         )}
       </div>
+
+      <UserDirectory addNotification={addNotification} />
 
       <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200">
         <div className="flex items-center gap-4 mb-8">
