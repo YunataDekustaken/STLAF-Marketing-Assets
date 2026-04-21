@@ -115,14 +115,6 @@ function AppContent() {
       setToasts(prev => prev.filter(t => t.id !== toastId));
     }, 4000);
   };
-  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(() => {
-    const token = localStorage.getItem('drive_token');
-    const expiresAt = localStorage.getItem('drive_expires_at');
-    if (token && expiresAt && Date.now() < parseInt(expiresAt)) {
-      return token;
-    }
-    return null;
-  });
 
   const notificationRef = useRef<HTMLDivElement>(null);
 
@@ -135,20 +127,6 @@ function AppContent() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const handleGoogleAuthSuccess = (token: string, expiresAt: number) => {
-    setGoogleAccessToken(token);
-    localStorage.setItem('drive_token', token);
-    localStorage.setItem('drive_expires_at', expiresAt.toString());
-    addNotification('Google Drive', 'Shared marketing drive connected successfully.', 'success');
-  };
-
-  const handleGoogleLogout = () => {
-    setGoogleAccessToken(null);
-    localStorage.removeItem('drive_token');
-    localStorage.removeItem('drive_expires_at');
-    addNotification('Google Drive', 'Shared marketing drive has been disconnected.', 'info');
-  };
 
   const updateRequestStatus = (id: string, newStatus: 'pending' | 'approved' | 'rejected') => {
     setAssetRequests(prev => prev.map(req => req.id === id ? { ...req, status: newStatus } : req));
@@ -533,8 +511,6 @@ function AppContent() {
             {viewMode === 'assets' ? (
               <AssetsView 
                 key={`assets-view-${homeResetToken}`}
-                googleAccessToken={googleAccessToken}
-                onGoogleLogout={handleGoogleLogout}
                 addNotification={addNotification}
                 initialPreviewFile={selectedPreviewFile}
                 onClearInitialPreview={() => setSelectedPreviewFile(null)}
@@ -555,9 +531,6 @@ function AppContent() {
               <AdminView 
                 notificationSettings={notificationSettings}
                 onUpdateNotificationSettings={handleUpdateNotificationSettings}
-                googleAccessToken={googleAccessToken}
-                onGoogleAuthSuccess={handleGoogleAuthSuccess}
-                onGoogleLogout={handleGoogleLogout}
                 addNotification={addNotification}
                 quickLinks={quickLinks}
                 onUpdateQuickLinks={updateQuickLinks}
@@ -565,8 +538,6 @@ function AppContent() {
             ) : (
               <AssetsView 
                 key={`assets-view-restricted-${homeResetToken}`}
-                googleAccessToken={googleAccessToken}
-                onGoogleLogout={handleGoogleLogout}
                 addNotification={addNotification}
                 initialPreviewFile={selectedPreviewFile}
                 onClearInitialPreview={() => setSelectedPreviewFile(null)}

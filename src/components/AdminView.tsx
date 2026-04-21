@@ -23,9 +23,6 @@ import { UserDirectory } from './UserDirectory';
 export const AdminView = ({ 
   notificationSettings,
   onUpdateNotificationSettings,
-  googleAccessToken,
-  onGoogleAuthSuccess,
-  onGoogleLogout,
   addNotification,
   quickLinks,
   onUpdateQuickLinks
@@ -39,9 +36,6 @@ export const AdminView = ({
     assetRequests: boolean 
   },
   onUpdateNotificationSettings: (settings: any) => void,
-  googleAccessToken: string | null,
-  onGoogleAuthSuccess: (token: string, expiresAt: number) => void,
-  onGoogleLogout: () => void,
   addNotification: (title: string, message: string, type?: 'info' | 'success' | 'warning', settingKey?: string, file?: any) => void,
   quickLinks?: {id: string, name: string, url: string}[],
   onUpdateQuickLinks: (links: {id: string, name: string, url: string}[]) => void
@@ -78,25 +72,21 @@ export const AdminView = ({
             </div>
             <div>
               <h3 className="text-xl font-bold text-slate-900">Google Drive Connectivity</h3>
-              <p className="text-xs text-slate-500">Connect or disconnect the marketing shared drive.</p>
+              <p className="text-xs text-slate-500">System-wide connection via Service Account is active.</p>
             </div>
           </div>
-          <GoogleAuth 
-            accessToken={googleAccessToken} 
-            onAuthSuccess={onGoogleAuthSuccess} 
-            onLogout={onGoogleLogout} 
-          />
+          <div className="flex items-center gap-3 p-3 px-4 bg-emerald-50 rounded-xl border border-emerald-100">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            <p className="text-sm font-bold text-emerald-700">Service Connected</p>
+          </div>
         </div>
 
-        {googleAccessToken && (
-          <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <p className="text-sm font-medium text-slate-700">Connected to Google Drive</p>
-            </div>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Active Session</p>
+        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <p className="text-sm font-medium text-slate-700">Storage is being managed automatically by the server.</p>
           </div>
-        )}
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Active System Connection</p>
+        </div>
       </div>
 
       <UserDirectory addNotification={addNotification} />

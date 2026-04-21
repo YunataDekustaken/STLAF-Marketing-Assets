@@ -1,12 +1,9 @@
 import { useState, useCallback } from 'react';
 
-const API_KEY = 'AIzaSyDPmCrFDf9OOl-fGp7aYngSpfZLMA3seNs';
 export const ROOT_FOLDER_ID = '1MWfdDx8uR55IKsgo9Y741BuxR-EJoesU';
 
 export const useGoogleDrive = (
-  accessToken: string | null, 
-  currentFolderId: string = ROOT_FOLDER_ID,
-  onUnauthorized?: () => void
+  currentFolderId: string = ROOT_FOLDER_ID
 ) => {
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -16,67 +13,41 @@ export const useGoogleDrive = (
     setLoading(true);
     setError(null);
     try {
-      const headers: Record<string, string> = {};
-      if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`;
-      }
-
-      const response = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q='${currentFolderId}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,thumbnailLink,webViewLink,webContentLink,modifiedTime,size)&key=${API_KEY}`,
-        {
-          headers,
-        }
-      );
-      
-      if (response.status === 401 && accessToken) {
-        onUnauthorized?.();
-        throw new Error('Session expired. Please reconnect to Google Drive.');
-      }
-
+      const response = await fetch(`/api/drive/files?folderId=${currentFolderId}`);
       const data = await response.json();
-      if (data.error) throw new Error(data.error.message);
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch files');
+      }
+      
       setFiles(data.files || []);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [accessToken, currentFolderId, onUnauthorized]);
+  }, [currentFolderId]);
 
   const uploadFile = async (file: File, customName?: string) => {
-    if (!accessToken) return;
     setLoading(true);
     try {
-      const metadata = {
-        name: customName || file.name,
-        parents: [currentFolderId],
-      };
-
       const formData = new FormData();
-      formData.append(
-        'metadata',
-        new Blob([JSON.stringify(metadata)], { type: 'application/json' })
-      );
       formData.append('file', file);
-
-      const response = await fetch(
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,thumbnailLink,webViewLink,webContentLink',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: formData,
-        }
-      );
-
-      if (response.status === 401) {
-        onUnauthorized?.();
-        throw new Error('Session expired. Please reconnect to Google Drive.');
+      formData.append('folderId', currentFolderId);
+      if (customName) {
+        formData.append('name', customName);
       }
 
+      const response = await fetch('/api/drive/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
       const data = await response.json();
-      if (data.error) throw new Error(data.error.message);
+      if (!response.ok) {
+        throw new Error(data.error || 'Upload failed');
+      }
+      
       await fetchFiles();
       return data;
     } catch (err: any) {
@@ -88,27 +59,15 @@ export const useGoogleDrive = (
   };
 
   const deleteFile = async (fileId: string) => {
-    if (!accessToken) return;
     setLoading(true);
     try {
-      const response = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${fileId}`,
-        {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      );
-
-      if (response.status === 401) {
-        onUnauthorized?.();
-        throw new Error('Session expired. Please reconnect to Google Drive.');
-      }
+      const response = await fetch(`/api/drive/files/${fileId}`, {
+        method: 'DELETE',
+      });
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error?.message || 'Delete failed');
+        throw new Error(data.error || 'Delete failed');
       }
       await fetchFiles();
     } catch (err: any) {
@@ -120,29 +79,19 @@ export const useGoogleDrive = (
   };
 
   const renameFile = async (fileId: string, newName: string) => {
-    if (!accessToken) return;
     setLoading(true);
     try {
-      const response = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${fileId}`,
-        {
-          method: 'PATCH',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ name: newName }),
-        }
-      );
-
-      if (response.status === 401) {
-        onUnauthorized?.();
-        throw new Error('Session expired. Please reconnect to Google Drive.');
-      }
+      const response = await fetch(`/api/drive/files/${fileId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: newName }),
+      });
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error?.message || 'Rename failed');
+        throw new Error(data.error || 'Rename failed');
       }
       await fetchFiles();
     } catch (err: any) {

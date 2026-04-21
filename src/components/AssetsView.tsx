@@ -23,8 +23,6 @@ import { UploadZone } from './UploadZone';
 import { useGoogleDrive, ROOT_FOLDER_ID } from '../hooks/useGoogleDrive';
 
 export const AssetsView = ({ 
-  googleAccessToken,
-  onGoogleLogout,
   addNotification,
   initialPreviewFile,
   onClearInitialPreview,
@@ -36,8 +34,6 @@ export const AssetsView = ({
   userRole
 }: { 
   key?: React.Key;
-  googleAccessToken: string | null;
-  onGoogleLogout: () => void;
   addNotification: (title: string, message: string, type?: 'info' | 'success' | 'warning', settingKey?: string, file?: any) => void;
   initialPreviewFile?: any | null;
   onClearInitialPreview?: () => void;
@@ -60,7 +56,11 @@ export const AssetsView = ({
   }, [initialFolder, onClearInitialFolder]);
 
   const currentFolder = folderStack[folderStack.length - 1];
-  const { files, loading, fetchFiles, uploadFile: originalUpload, deleteFile: originalDelete, renameFile } = useGoogleDrive(googleAccessToken, currentFolder.id, onGoogleLogout);
+  const { files, loading, error, fetchFiles, uploadFile: originalUpload, deleteFile: originalDelete, renameFile } = useGoogleDrive(currentFolder.id);
+
+  const isConfigError = error?.includes('GOOGLE_SERVICE_ACCOUNT_JSON');
+  const isApiDisabledError = error?.includes('Google Drive API has not been used') || error?.includes('is disabled');
+  const apiEnablementLink = error?.match(/https:\/\/console\.developers\.google\.com\/[^\s]+/)?.[0];
 
   const displayFiles = React.useMemo(() => {
     // If user is a member, hide [PENDING] files
@@ -221,7 +221,7 @@ export const AssetsView = ({
 
             {/* Right side: Upload and view controls */}
             <div className="flex flex-col items-end gap-3 shrink-0">
-              {googleAccessToken && userRole !== 'department' && <UploadZone onUpload={uploadFile} loading={loading} isSmall />}
+              {userRole !== 'department' && <UploadZone onUpload={uploadFile} loading={loading} isSmall />}
               <div className="flex flex-row items-center gap-3 w-fit">
                 <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 rounded-xl text-sm font-medium text-slate-600 focus-within:ring-2 focus-within:ring-amber-500/50 transition-all w-fit">
                   <ArrowUpDown className="w-4 h-4 text-slate-400" />
@@ -262,21 +262,68 @@ export const AssetsView = ({
           </div>
 
           <div className="space-y-8">
-            <AssetGallery 
-              files={sortedFiles} 
-              loading={loading} 
-              onDelete={deleteFile} 
-              onFolderClick={handleFolderClick}
-              gridSize={gridSize}
-              addNotification={addNotification}
-              initialPreviewFile={initialPreviewFile}
-              onClearInitialPreview={onClearInitialPreview}
-              pinnedAssets={pinnedAssets}
-              onTogglePin={onTogglePin}
-              hasAdminAccess={hasAdminAccess}
-              onApprove={handleApprove}
-              userRole={userRole}
-            />
+            {isConfigError ? (
+              <div className="p-8 bg-amber-50 rounded-3xl border border-amber-200">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="p-3 bg-amber-500 rounded-xl">
+                    <Cloud className="w-6 h-6 text-primary-dark" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900">Google Drive Configuration Required</h3>
+                    <p className="text-slate-600">The application needs a Service Account key to connect to the marketing assets.</p>
+                  </div>
+                </div>
+                <div className="space-y-3 text-sm text-slate-600">
+                  <p className="font-bold text-slate-900">To fix this error:</p>
+                  <ol className="list-decimal list-inside space-y-2">
+                    <li>Open the <strong>Settings</strong> (gear icon) in the top right.</li>
+                    <li>Add a new Environment Variable named: <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono font-bold text-slate-900">GOOGLE_SERVICE_ACCOUNT_JSON</code></li>
+                    <li>Paste your Service Account JSON key as the value.</li>
+                    <li>The library will refresh automatically once the key is saved.</li>
+                  </ol>
+                </div>
+              </div>
+            ) : isApiDisabledError ? (
+              <div className="p-8 bg-rose-50 rounded-3xl border border-rose-200">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="p-3 bg-rose-500 rounded-xl">
+                    <RefreshCw className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900">Step 2: Enable the Drive API</h3>
+                    <p className="text-slate-600">Your "Robot" account is connected, but the Google Drive API is disabled in your cloud project.</p>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <p className="text-sm text-slate-600">To fix this, click the link below to enable the API for your project. After clicking **Enable**, wait about 60 seconds and refresh this page.</p>
+                  <a 
+                    href={apiEnablementLink || "https://console.cloud.google.com/apis/library/drive.googleapis.com"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-all shadow-sm"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Enable Google Drive API
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <AssetGallery 
+                files={sortedFiles} 
+                loading={loading} 
+                onDelete={deleteFile} 
+                onFolderClick={handleFolderClick}
+                gridSize={gridSize}
+                addNotification={addNotification}
+                initialPreviewFile={initialPreviewFile}
+                onClearInitialPreview={onClearInitialPreview}
+                pinnedAssets={pinnedAssets}
+                onTogglePin={onTogglePin}
+                hasAdminAccess={hasAdminAccess}
+                onApprove={handleApprove}
+                userRole={userRole}
+              />
+            )}
           </div>
           </motion.div>
       </AnimatePresence>
