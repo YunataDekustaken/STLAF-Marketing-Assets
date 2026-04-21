@@ -1,0 +1,108 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: posts
+// Document ID: {postId}
+// Fields:
+//   - id: string (required) - Unique identifier
+//   - date: string (required) - YYYY-MM-DD
+//   - status: string (required) - Enum: Not Started, In Progress, Ready for Review, Scheduled
+//   - contentTitle: string (required)
+//   - contentType: string (required)
+//   - format: string (required)
+//   - topicTheme: string (required)
+//   - subtopic: string (optional)
+//   - caption: string (optional)
+//   - visualIdeas: string (optional)
+//   - creatives: list (optional) - List of image URLs
+//   - funnelStatus: string (optional)
+//   - customPrompt: string (optional)
+//   - notes: string (optional)
+//   - userId: string (required) - Owner UID
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "pjhbayno15@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidPost(data) {
+      return data.keys().hasAll(['id', 'date', 'status', 'contentTitle', 'contentType', 'format', 'topicTheme', 'userId']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.date is string && data.date.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.status in ['Not Started', 'In Progress', 'Ready for Review', 'Scheduled'] &&
+             data.contentTitle is string && data.contentTitle.size() < 200 &&
+             data.contentType is string && data.contentType.size() < 200 &&
+             data.format is string && data.format.size() < 200 &&
+             data.topicTheme is string && data.topicTheme.size() < 500 &&
+             data.userId == request.auth.uid &&
+             (!('subtopic' in data) || (data.subtopic is string && data.subtopic.size() < 500)) &&
+             (!('caption' in data) || (data.caption is string && data.caption.size() < 5000)) &&
+             (!('visualIdeas' in data) || (data.visualIdeas is string && data.visualIdeas.size() < 1000)) &&
+             (!('creatives' in data) || (data.creatives is list && data.creatives.size() <= 10)) &&
+             (!('funnelStatus' in data) || (data.funnelStatus is string)) &&
+             (!('customPrompt' in data) || (data.customPrompt is string && data.customPrompt.size() < 2000)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() < 5000));
+    }
+
+    function isValidAsset(data) {
+      return data.keys().hasAll(['id', 'title', 'category', 'link']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.category is string && data.category.size() > 0 && data.category.size() < 100 &&
+             data.link is string && data.link.matches("^https?://.*") && data.link.size() < 1000;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /posts/{postId} {
+      allow read, write: if true; // Relaxed for "disable login" request. WARNING: Publicly accessible.
+    }
+
+    match /assets/{assetId} {
+      allow read, write: if true; // Relaxed for "disable login" request.
+    }
+
+    match /users/{userId} {
+      allow read, write: if true; // Relaxed for "disable login" request.
+    }
+
+    match /notifications/{notificationId} {
+      allow read, write: if true;
+    }
+
+    match /settings/{settingId} {
+      allow read, write: if true; // Relaxed for "disable login" request.
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

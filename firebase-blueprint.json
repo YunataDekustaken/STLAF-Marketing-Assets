@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "Post": {
+      "title": "Post",
+      "description": "A social media post content strategy item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the post" },
+        "date": { "type": "string", "format": "date", "description": "Scheduled date for the post (YYYY-MM-DD)" },
+        "status": { 
+          "type": "string", 
+          "enum": ["Not Started", "In Progress", "Ready for Review", "Scheduled"],
+          "description": "Current workflow status"
+        },
+        "contentTitle": { "type": "string", "description": "Main title or category of the content" },
+        "contentType": { "type": "string", "description": "Type of content (e.g., Educational, Promotional)" },
+        "format": { "type": "string", "description": "Platform format (e.g., Reel, Carousel)" },
+        "topicTheme": { "type": "string", "description": "Main topic or theme of the post" },
+        "subtopic": { "type": "string", "description": "Secondary topic details" },
+        "caption": { "type": "string", "description": "The written content for the post" },
+        "visualIdeas": { "type": "string", "description": "Ideas for visuals or links to assets" },
+        "creatives": { 
+          "type": "array", 
+          "items": { "type": "string" },
+          "description": "List of URLs for creative assets"
+        },
+        "funnelStatus": { "type": "string", "description": "Marketing funnel stage" },
+        "customPrompt": { "type": "string", "description": "Custom AI instructions for caption generation" },
+        "notes": { "type": "string", "description": "General notes" },
+        "userId": { "type": "string", "description": "The ID of the user who owns this post" }
+      },
+      "required": ["id", "date", "status", "contentTitle", "contentType", "format", "topicTheme"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A system or user notification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "read": { "type": "boolean" },
+        "type": { "type": "string" },
+        "postId": { "type": "string", "description": "Optional reference to a post" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "title", "message", "createdAt", "read", "userId"]
+    },
+    "SocialLinks": {
+      "title": "SocialLinks",
+      "description": "Social media redirection links",
+      "type": "object",
+      "properties": {
+        "facebook": { "type": "string" },
+        "instagram": { "type": "string" },
+        "linkedin": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Collection of content strategy posts"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Collection of user notifications"
+    },
+    "/settings/{settingId}": {
+      "schema": "object",
+      "description": "System settings"
+    }
+  }
+}
