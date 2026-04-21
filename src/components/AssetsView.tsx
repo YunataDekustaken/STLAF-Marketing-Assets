@@ -56,7 +56,7 @@ export const AssetsView = ({
   }, [initialFolder, onClearInitialFolder]);
 
   const currentFolder = folderStack[folderStack.length - 1];
-  const { files, loading, error, fetchFiles, uploadFile: originalUpload, deleteFile: originalDelete, renameFile } = useGoogleDrive(currentFolder.id);
+  const { files, loading, error, serviceStatus, fetchFiles, uploadFile: originalUpload, deleteFile: originalDelete, renameFile } = useGoogleDrive(currentFolder.id);
 
   const isConfigError = error?.includes('GOOGLE_SERVICE_ACCOUNT_JSON');
   const isApiDisabledError = error?.includes('Google Drive API has not been used') || error?.includes('is disabled');
@@ -322,6 +322,7 @@ export const AssetsView = ({
                 hasAdminAccess={hasAdminAccess}
                 onApprove={handleApprove}
                 userRole={userRole}
+                serviceEmail={serviceStatus?.email}
               />
             )}
           </div>

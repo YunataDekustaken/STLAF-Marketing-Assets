@@ -34,6 +34,7 @@ interface AssetGalleryProps {
   hasAdminAccess?: boolean;
   onApprove?: (fileId: string, currentName: string) => void;
   userRole?: string;
+  serviceEmail?: string;
 }
 
 const getFileIcon = (mimeType: string) => {
@@ -63,7 +64,8 @@ export const AssetGallery: React.FC<AssetGalleryProps> = ({
   onTogglePin,
   hasAdminAccess,
   onApprove,
-  userRole
+  userRole,
+  serviceEmail
 }) => {
   const [previewFile, setPreviewFile] = useState<any | null>(null);
 
@@ -401,8 +403,28 @@ export const AssetGallery: React.FC<AssetGalleryProps> = ({
       )}
 
       {files.length === 0 && !loading && (
-        <div className="py-20 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
-          <p className="text-slate-400 font-medium">No files found in this folder.</p>
+        <div className="py-20 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 px-6">
+          <p className="text-slate-400 font-medium mb-4">No files found in this folder.</p>
+          {(userRole === 'marketing_supervisor' || userRole === 'marketing_admin') && serviceEmail && (
+            <div className="max-w-md mx-auto p-4 bg-white rounded-2xl shadow-sm border border-slate-100 text-left">
+              <p className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-2">Troubleshooting Tip:</p>
+              <p className="text-sm text-slate-600 mb-3">If you have files in your Google Drive but don't see them here, ensure you have **Shared** your Drive folder with the system's Service Account:</p>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-3 group">
+                <code className="text-xs font-mono font-bold text-amber-600 break-all select-all">
+                  {serviceEmail}
+                </code>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(serviceEmail);
+                    addNotification('Copied', 'Service email copied to clipboard', 'info');
+                  }}
+                  className="p-1.5 hover:bg-slate-200 rounded-lg shrink-0 transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

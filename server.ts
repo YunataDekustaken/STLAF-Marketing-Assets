@@ -55,11 +55,24 @@ async function startServer() {
 
   // Health check to verify environment variables
   app.get('/api/health', (req, res) => {
-    const key = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    const key = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.google_service_account_json;
+    let clientEmail = 'not detected';
+    
+    if (key) {
+      try {
+        const credentials = key.trim().startsWith('{') 
+          ? JSON.parse(key) 
+          : JSON.parse(Buffer.from(key, 'base64').toString());
+        clientEmail = credentials.client_email;
+      } catch (e) {
+        clientEmail = 'parse error';
+      }
+    }
+
     res.json({
       status: 'ok',
       google_drive_key_detected: !!key,
-      key_preview: key ? `${key.substring(0, 10)}...` : 'not detected'
+      service_account_email: clientEmail
     });
   });
 

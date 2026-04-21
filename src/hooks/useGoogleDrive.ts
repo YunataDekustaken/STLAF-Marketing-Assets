@@ -8,11 +8,20 @@ export const useGoogleDrive = (
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [serviceStatus, setServiceStatus] = useState<{detected: boolean, email: string} | null>(null);
 
   const fetchFiles = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      // Check health/config first
+      const healthResponse = await fetch('/api/health');
+      const healthData = await healthResponse.json();
+      setServiceStatus({
+        detected: healthData.google_drive_key_detected,
+        email: healthData.service_account_email
+      });
+
       const response = await fetch(`/api/drive/files?folderId=${currentFolderId}`);
       const data = await response.json();
       
@@ -102,5 +111,5 @@ export const useGoogleDrive = (
     }
   };
 
-  return { files, loading, error, fetchFiles, uploadFile, deleteFile, renameFile };
+  return { files, loading, error, serviceStatus, fetchFiles, uploadFile, deleteFile, renameFile };
 };
