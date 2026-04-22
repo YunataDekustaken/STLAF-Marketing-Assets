@@ -9,13 +9,14 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { UserProfile, UserRole } from '../types';
 
 interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
+  googleAccessToken: string | null;
   login: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   signupWithEmail: (email: string, pass: string) => Promise<void>;
@@ -25,19 +26,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Define your known users and their roles here
-const KNOWN_USERS: Record<string, { name: string; role: UserRole; dept: string }> = {
-  'supervisor@yourdomain.com': { name: 'Supervisor Name', role: 'marketing_supervisor', dept: 'Marketing' },
-  'member@yourdomain.com': { name: 'Member Name', role: 'marketing_member', dept: 'Marketing' },
-  // Add more known users here
-};
-
-const SUPERVISOR_EMAILS = ['supervisor@yourdomain.com', 'pjhbayno15@gmail.com']; // emails that get supervisor role
+const SUPERVISOR_EMAILS = ['pjhbayno15@gmail.com']; // emergency admin access
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(sessionStorage.getItem('google_drive_token'));
 
   useEffect(() => {
     // If firebase config is completely generic dummy, auth might not work properly. 
@@ -52,6 +48,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         const docRef = doc(db, 'users', user.uid);
         try {
+          // Check for dynamic role assignment first
+          let assignedRole: UserRole | null = null;
+          let assignedDept: string | null = null;
+
+          if (user.email) {
+            const assignmentQuery = query(
+              collection(db, 'roleAssignments'),
+              where('email', '==', user.email.toLowerCase())
+            );
+            const assignmentSnap = await getDocs(assignmentQuery);
+            if (!assignmentSnap.empty) {
+              const assignmentData = assignmentSnap.docs[0].data();
+              assignedRole = assignmentData.role;
+              assignedDept = assignmentData.department;
+            }
+          }
+
           const docSnap = await getDoc(docRef);
 
           if (docSnap.exists()) {
@@ -59,16 +72,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             let updated = false;
             let updatedData = { ...data };
 
-            // Force supervisor role for specific emails
-            if (SUPERVISOR_EMAILS.includes(user.email || '') && data.role !== 'marketing_supervisor') {
-              updatedData.role = 'marketing_supervisor';
+            // Apply assigned role if exists
+            if (assignedRole && data.role !== assignedRole) {
+              updatedData.role = assignedRole;
               updated = true;
             }
 
-            // Sync known display names
-            const known = user.email ? KNOWN_USERS[user.email.toLowerCase()] : null;
-            if (known && data.displayName !== known.name) {
-              updatedData.displayName = known.name;
+            // Sync dept if assigned
+            if (assignedDept && data.department !== assignedDept) {
+              updatedData.department = assignedDept as any;
+              updated = true;
+            }
+
+            // Force supervisor role for emergency emails if not already assigned a role
+            if (!assignedRole && SUPERVISOR_EMAILS.includes(user.email || '') && data.role !== 'marketing_supervisor') {
+              updatedData.role = 'marketing_supervisor';
+              updatedData.status = 'active';
+              updated = true;
+            }
+
+            // Ensure status exists for older users
+            if (!data.status) {
+              updatedData.status = 'active';
               updated = true;
             }
 
@@ -86,20 +111,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           } else {
             // Auto-create profile for new users
-            const known = user.email ? KNOWN_USERS[user.email.toLowerCase()] : null;
             const isSupervisor = SUPERVISOR_EMAILS.includes(user.email || '');
 
-            let role: UserRole = 'department';
-            if (known) role = known.role;
-            else if (isSupervisor) role = 'marketing_supervisor';
+            let role: UserRole = assignedRole || (isSupervisor ? 'marketing_supervisor' : 'department');
+            let department = assignedDept || 'Operations';
+            // Default status: active if pre-registered or supervisor, otherwise pending
+            let status: any = (assignedRole || isSupervisor) ? 'active' : 'pending';
 
             const newProfile: UserProfile = {
               uid: user.uid,
               email: user.email || '',
-              displayName: known?.name || user.displayName || user.email?.split('@')[0] || 'User',
+              displayName: user.displayName || user.email?.split('@')[0] || 'User',
               role,
-              department: (known?.dept || 'Operations') as any,
-              photoURL: user.photoURL || undefined
+              department: department as any,
+              photoURL: user.photoURL || undefined,
+              status
             };
 
             await setDoc(docRef, newProfile);
@@ -118,20 +144,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    if (isAuthenticating) return;
+    setIsAuthenticating(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/drive.file');
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      const token = credential?.accessToken;
+      if (token) {
+        setGoogleAccessToken(token);
+        sessionStorage.setItem('google_drive_token', token);
+      }
+    } finally {
+      setIsAuthenticating(false);
+    }
   };
 
   const loginWithEmail = async (email: string, pass: string) => {
-    await signInWithEmailAndPassword(auth, email, pass);
+    if (isAuthenticating) return;
+    setIsAuthenticating(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, pass);
+    } finally {
+      setIsAuthenticating(false);
+    }
   };
 
   const signupWithEmail = async (email: string, pass: string) => {
-    await createUserWithEmailAndPassword(auth, email, pass);
+    if (isAuthenticating) return;
+    setIsAuthenticating(true);
+    try {
+      await createUserWithEmailAndPassword(auth, email, pass);
+    } finally {
+      setIsAuthenticating(false);
+    }
   };
 
   const logout = async () => {
     await signOut(auth);
+    setGoogleAccessToken(null);
+    sessionStorage.removeItem('google_drive_token');
   };
 
   const updateProfile = async (data: Partial<UserProfile>) => {
@@ -152,7 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, login, loginWithEmail, signupWithEmail, logout, updateProfile }}>
+    <AuthContext.Provider value={{ user, profile, loading, googleAccessToken, login, loginWithEmail, signupWithEmail, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

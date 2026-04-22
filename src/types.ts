@@ -9,6 +9,8 @@ export type UserRole = 'marketing_supervisor' | 'marketing_member' | 'department
 
 export type Department = 'Litigation' | 'Corporate' | 'HR' | 'Accounting' | 'Operations' | 'Marketing';
 
+export type UserStatus = 'active' | 'pending' | 'blocked';
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -16,6 +18,7 @@ export interface UserProfile {
   role: UserRole;
   department: Department;
   photoURL?: string;
+  status: UserStatus;
 }
 
 export interface RequestItem {

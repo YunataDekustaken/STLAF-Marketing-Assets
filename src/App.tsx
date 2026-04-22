@@ -164,6 +164,33 @@ function AppContent() {
 
   if (!user) return <AuthScreen />;
 
+  if (profile?.status === 'pending') {
+    return (
+      <div className="min-h-screen bg-[#F5F5F4] flex items-center justify-center p-4">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white p-12 rounded-[32px] shadow-2xl border border-black/5 max-w-md w-full text-center"
+        >
+          <div className="w-20 h-20 bg-amber-50 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-sm">
+            <Lock className="w-10 h-10 text-amber-500" />
+          </div>
+          <h2 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">Account Pending</h2>
+          <p className="text-slate-500 leading-relaxed font-medium mb-8">
+            Your account ({user.email}) is currently awaiting approval from a supervisor. 
+            Please check back later or contact the marketing department.
+          </p>
+          <button 
+            onClick={logout}
+            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-black transition-all"
+          >
+            Sign Out
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
   const isSupervisor = profile?.role === 'marketing_supervisor';
   const isMember = profile?.role === 'marketing_member';
   const isDepartment = profile?.role === 'department';

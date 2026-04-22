@@ -114,7 +114,11 @@ export const AssetsView = ({
       
       addNotification('Upload Successful', successMsg, 'success', 'driveUploads');
     } catch (err: any) {
-      addNotification('Upload Failed', `Failed to upload ${file.name}: ${err.message}`, 'warning', 'driveUploads');
+      let friendlyError = err.message;
+      if (err.message.includes('Service Accounts do not have storage quota')) {
+        friendlyError = "Google Quota Error: Service Accounts cannot upload to personal folders. PLEASE MOVE YOUR FOLDER TO A 'SHARED DRIVE' (Team Drive) and share it with the service account email displayed below.";
+      }
+      addNotification('Upload Failed', `Failed to upload ${file.name}: ${friendlyError}`, 'warning', 'driveUploads');
     }
   };
 

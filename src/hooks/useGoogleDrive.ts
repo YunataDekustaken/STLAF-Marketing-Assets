@@ -1,10 +1,12 @@
 import { useState, useCallback } from 'react';
+import { useAuth } from './useAuth';
 
 export const ROOT_FOLDER_ID = '1MWfdDx8uR55IKsgo9Y741BuxR-EJoesU';
 
 export const useGoogleDrive = (
   currentFolderId: string = ROOT_FOLDER_ID
 ) => {
+  const { googleAccessToken } = useAuth();
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,8 +64,14 @@ export const useGoogleDrive = (
         formData.append('name', customName);
       }
 
+      const headers: Record<string, string> = {};
+      if (googleAccessToken) {
+        headers['Authorization'] = `Bearer ${googleAccessToken}`;
+      }
+
       const response = await fetch('/api/drive/upload', {
         method: 'POST',
+        headers,
         body: formData,
       });
 

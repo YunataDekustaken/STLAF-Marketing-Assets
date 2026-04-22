@@ -56,9 +56,26 @@
         "instagram": { "type": "string" },
         "linkedin": { "type": "string" }
       }
+    },
+    "RoleAssignment": {
+      "title": "RoleAssignment",
+      "description": "Mapping of email addresses to specific roles",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "description": "The user's Gmail address" },
+        "role": { "type": "string", "enum": ["marketing_supervisor", "marketing_member", "department"], "description": "The role to assign" },
+        "department": { "type": "string", "description": "The department name" },
+        "assignedAt": { "type": "string", "format": "date-time" },
+        "assignedBy": { "type": "string", "description": "The user ID who created this assignment" }
+      },
+      "required": ["email", "role"]
     }
   },
   "firestore": {
+    "/roleAssignments/{assignmentId}": {
+      "schema": "RoleAssignment",
+      "description": "Pre-registered role assignments for Gmail users"
+    },
     "/posts/{postId}": {
       "schema": "Post",
       "description": "Collection of content strategy posts"

@@ -12,7 +12,14 @@ app.use(express.json());
 const upload = multer({ storage: multer.memoryStorage() });
 
 let driveClient: any = null;
-const getDriveClient = () => {
+const getDriveClient = (accessToken?: string) => {
+  // If a user-provided access token is available, use it (solves Quota issue)
+  if (accessToken) {
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    return google.drive({ version: 'v3', auth });
+  }
+
   if (driveClient) return driveClient;
 
   const serviceAccountVar = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.google_service_account_json;
@@ -95,7 +102,11 @@ app.post('/api/drive/upload', upload.single('file'), async (req, res) => {
   }
 
   try {
-    const drive = getDriveClient();
+    // Get token from header if it exists
+    const authHeader = req.headers.authorization;
+    const userAccessToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
+
+    const drive = getDriveClient(userAccessToken);
     const bufferStream = new Readable();
     bufferStream.push(file.buffer);
     bufferStream.push(null);

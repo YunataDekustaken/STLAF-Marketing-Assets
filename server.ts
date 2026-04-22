@@ -20,7 +20,15 @@ async function startServer() {
 
   // Initialize Google Auth
   let driveClient: any = null;
-  const getDriveClient = () => {
+  const getDriveClient = (accessToken?: string) => {
+    // If a user-provided access token is available, use it (solves Quota issue)
+    if (accessToken) {
+      console.log('[API] Using User OAuth Token for request');
+      const auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: accessToken });
+      return google.drive({ version: 'v3', auth });
+    }
+
     if (driveClient) return driveClient;
 
     const serviceAccountVar = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.google_service_account_json;
@@ -112,7 +120,11 @@ async function startServer() {
     }
 
     try {
-      const drive = getDriveClient();
+      // Get token from header if it exists
+      const authHeader = req.headers.authorization;
+      const userAccessToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
+
+      const drive = getDriveClient(userAccessToken);
       const bufferStream = new Readable();
       bufferStream.push(file.buffer);
       bufferStream.push(null);
