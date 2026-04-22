@@ -75,6 +75,8 @@ app.get('/api/drive/files', async (req, res) => {
       q: `'${folderId}' in parents and trashed = false`,
       fields: 'files(id, name, mimeType, webViewLink, webContentLink, modifiedTime, size, thumbnailLink)',
       orderBy: 'folder,name',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
     });
     res.json({ files: response.data.files || [] });
   } catch (error: any) {
@@ -108,6 +110,7 @@ app.post('/api/drive/upload', upload.single('file'), async (req, res) => {
         body: bufferStream,
       },
       fields: 'id, name',
+      supportsAllDrives: true,
     });
 
     res.json(response.data);

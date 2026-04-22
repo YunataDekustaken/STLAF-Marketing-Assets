@@ -87,6 +87,8 @@ async function startServer() {
         q: `'${folderId}' in parents and trashed = false`,
         fields: 'files(id, name, mimeType, webViewLink, webContentLink, modifiedTime, size, thumbnailLink)',
         orderBy: 'folder,name',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
       });
       console.log(`[API] Successfully listed ${response.data.files?.length || 0} files`);
       res.json({ files: response.data.files || [] });
@@ -125,6 +127,7 @@ async function startServer() {
           body: bufferStream,
         },
         fields: 'id, name',
+        supportsAllDrives: true,
       });
 
       console.log(`[API] Successfully uploaded: ${response.data.name} (${response.data.id})`);
