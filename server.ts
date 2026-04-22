@@ -55,6 +55,7 @@ async function startServer() {
 
   // Health check to verify environment variables
   app.get('/api/health', (req, res) => {
+    console.log('[API] Health check requested');
     const key = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.google_service_account_json;
     let clientEmail = 'not detected';
     
@@ -79,6 +80,7 @@ async function startServer() {
   // List Files
   app.get('/api/drive/files', async (req, res) => {
     const folderId = req.query.folderId as string || ROOT_FOLDER_ID;
+    console.log(`[API] Listing files for folder: ${folderId}`);
     try {
       const drive = getDriveClient();
       const response = await drive.files.list({
@@ -86,10 +88,11 @@ async function startServer() {
         fields: 'files(id, name, mimeType, webViewLink, webContentLink, modifiedTime, size, thumbnailLink)',
         orderBy: 'folder,name',
       });
-      res.json({ files: response.data.files });
+      console.log(`[API] Successfully listed ${response.data.files?.length || 0} files`);
+      res.json({ files: response.data.files || [] });
     } catch (error: any) {
-      console.error('Drive List Error:', error.message);
-      res.status(500).json({ error: error.message });
+      console.error('[API] Drive List Error:', error.message || error);
+      res.status(500).json({ error: error.message || 'Internal Server Error during File Listing' });
     }
   });
 
@@ -99,7 +102,10 @@ async function startServer() {
     const folderId = req.body.folderId || ROOT_FOLDER_ID;
     const customName = req.body.name;
 
+    console.log(`[API] Uploading file: ${file?.originalname} to folder: ${folderId}`);
+
     if (!file) {
+      console.warn('[API] Upload attempt with no file');
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
@@ -121,10 +127,11 @@ async function startServer() {
         fields: 'id, name',
       });
 
+      console.log(`[API] Successfully uploaded: ${response.data.name} (${response.data.id})`);
       res.json(response.data);
     } catch (error: any) {
-      console.error('Drive Upload Error:', error.message);
-      res.status(500).json({ error: error.message });
+      console.error('[API] Drive Upload Error:', error.message || error);
+      res.status(500).json({ error: error.message || 'Internal Server Error during Upload' });
     }
   });
 

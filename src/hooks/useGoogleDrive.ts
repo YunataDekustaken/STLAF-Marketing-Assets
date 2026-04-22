@@ -16,17 +16,32 @@ export const useGoogleDrive = (
     try {
       // Check health/config first
       const healthResponse = await fetch('/api/health');
-      const healthData = await healthResponse.json();
+      const healthText = await healthResponse.text();
+      let healthData;
+      try {
+        healthData = JSON.parse(healthText);
+      } catch (e) {
+        console.warn('Health check returned non-JSON', healthText);
+        healthData = { google_drive_key_detected: false, service_account_email: 'unknown' };
+      }
+      
       setServiceStatus({
         detected: healthData.google_drive_key_detected,
         email: healthData.service_account_email
       });
 
       const response = await fetch(`/api/drive/files?folderId=${currentFolderId}`);
-      const data = await response.json();
+      const text = await response.text();
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error(`Server returned invalid response: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`);
+      }
       
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch files');
+        throw new Error(data.error || `Server Error (${response.status})`);
       }
       
       setFiles(data.files || []);
@@ -52,9 +67,16 @@ export const useGoogleDrive = (
         body: formData,
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error(`Upload server returned invalid response: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`);
+      }
+
       if (!response.ok) {
-        throw new Error(data.error || 'Upload failed');
+        throw new Error(data.error || `Upload failed (${response.status})`);
       }
       
       await fetchFiles();
@@ -74,9 +96,15 @@ export const useGoogleDrive = (
         method: 'DELETE',
       });
 
+      const text = await response.text();
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Delete failed');
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          throw new Error(`Delete failed (${response.status}): ${text.substring(0, 100)}`);
+        }
+        throw new Error(data.error || `Delete failed (${response.status})`);
       }
       await fetchFiles();
     } catch (err: any) {
@@ -98,9 +126,15 @@ export const useGoogleDrive = (
         body: JSON.stringify({ name: newName }),
       });
 
+      const text = await response.text();
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Rename failed');
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          throw new Error(`Rename failed (${response.status}): ${text.substring(0, 100)}`);
+        }
+        throw new Error(data.error || `Rename failed (${response.status})`);
       }
       await fetchFiles();
     } catch (err: any) {
