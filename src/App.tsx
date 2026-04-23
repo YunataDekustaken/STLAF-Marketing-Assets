@@ -70,6 +70,11 @@ const formatNotificationTime = (timestamp: any) => {
 
 function AppContent() {
   const { user, profile, loading, login, logout } = useAuth();
+  const isSupervisor = profile?.role === 'marketing_supervisor';
+  const isMember = profile?.role === 'marketing_member';
+  const isDepartment = profile?.role === 'department';
+  const hasAdminAccess = isSupervisor;
+
   const [viewMode, setViewMode] = useState<ViewMode>('assets');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
@@ -77,10 +82,43 @@ function AppContent() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [toasts, setToasts] = useState<{id: string, message: string, type: 'success' | 'info' | 'error'}[]>([]);
 
+  const lastProcessedNotifRef = useRef<string | null>(null);
+
   // Subscribe to real-time notifications from Firestore
   useEffect(() => {
     if (user) {
       const unsubscribe = persistenceService.subscribeToNotifications(user.uid, (data) => {
+        // If there's new data and it's not the initial load, show a toast for new notifications
+        if (data.length > 0) {
+          // If this is the initial load, just record the IDs and don't toast
+          if (!lastProcessedNotifRef.current) {
+            lastProcessedNotifRef.current = data.map(n => n.id).join(',');
+            setNotifications(data);
+            return;
+          }
+
+          // Find notifications that are new since last process
+          const oldIds = lastProcessedNotifRef.current.split(',');
+          // Filter to skip showing toast for actions the current user triggered themselves (since we show local toasts for those)
+          const newNotifs = data.filter(n => !oldIds.includes(n.id) && !n.read && n.userId !== user.uid);
+
+          newNotifs.forEach(latestNotif => {
+            const toastId = latestNotif.id;
+            setToasts(prev => [...prev, { 
+              id: toastId, 
+              message: latestNotif.message, 
+              type: latestNotif.type === 'warning' ? 'error' : (latestNotif.type || 'info') 
+            }]);
+            setTimeout(() => {
+              setToasts(prev => prev.filter(t => t.id !== toastId));
+            }, 5000);
+          });
+          
+          lastProcessedNotifRef.current = data.map(n => n.id).join(',');
+        } else {
+          lastProcessedNotifRef.current = 'empty';
+        }
+        
         setNotifications(data);
       });
       return () => unsubscribe();
@@ -130,7 +168,7 @@ function AppContent() {
   const [pinnedAssets, setPinnedAssets] = useState<any[]>([]);
 
   const [notificationSettings, setNotificationSettings] = useState({
-    driveUploads: true,
+    memberUploads: true,
     fileDownloads: true,
     connectivityIssues: true,
     storageQuota: false,
@@ -239,11 +277,6 @@ function AppContent() {
       </div>
     );
   }
-
-  const isSupervisor = profile?.role === 'marketing_supervisor';
-  const isMember = profile?.role === 'marketing_member';
-  const isDepartment = profile?.role === 'department';
-  const hasAdminAccess = isSupervisor;
 
   return (
     <div className="flex min-h-screen bg-bg-main font-sans text-slate-900">

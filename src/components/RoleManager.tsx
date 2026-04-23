@@ -39,6 +39,8 @@ interface RoleAssignment {
   assignedAt: any;
 }
 
+const DEPARTMENTS = ['Sales', 'Marketing', 'HR', 'IT', 'Finance', 'Operations', 'Corporate'];
+
 export const RoleManager = ({ addNotification }: { addNotification: any }) => {
   const [assignments, setAssignments] = useState<RoleAssignment[]>([]);
   const [pendingUsers, setPendingUsers] = useState<UserProfile[]>([]);
@@ -330,7 +332,14 @@ export const RoleManager = ({ addNotification }: { addNotification: any }) => {
                               {editingUserId === user.uid ? (
                                 <select 
                                   value={editValues?.role}
-                                  onChange={(e) => setEditValues(prev => prev ? { ...prev, role: e.target.value as UserRole } : null)}
+                                  onChange={(e) => {
+                                    const newRole = e.target.value as UserRole;
+                                    setEditValues(prev => prev ? { 
+                                      ...prev, 
+                                      role: newRole,
+                                      department: newRole === 'department' ? DEPARTMENTS[0] : 'Marketing'
+                                    } : null);
+                                  }}
                                   className="w-full text-xs font-bold p-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
                                 >
                                   <option value="marketing_member">Marketing Member</option>
@@ -344,20 +353,23 @@ export const RoleManager = ({ addNotification }: { addNotification: any }) => {
                                 </div>
                               )}
                             </td>
-                            <td className="py-4 px-4">
-                              {editingUserId === user.uid ? (
-                                <select 
-                                  value={editValues?.department}
-                                  onChange={(e) => setEditValues(prev => prev ? { ...prev, department: e.target.value } : null)}
-                                  className="w-full text-xs font-bold p-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
-                                >
-                                  <option value="Marketing">Marketing</option>
-                                  <option value="Creative">Creative</option>
-                                  <option value="Content">Content</option>
-                                  <option value="Social">Social</option>
-                                  <option value="PR">PR</option>
-                                </select>
-                              ) : (
+                             <td className="py-4 px-4">
+                               {editingUserId === user.uid ? (
+                                 <select 
+                                   disabled={editValues?.role !== 'department'}
+                                   value={editValues?.role === 'department' ? editValues?.department : 'Marketing'}
+                                   onChange={(e) => setEditValues(prev => prev ? { ...prev, department: e.target.value as any } : null)}
+                                   className="w-full text-xs font-bold p-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-slate-50 disabled:text-slate-400"
+                                 >
+                                   {editValues?.role !== 'department' ? (
+                                     <option value="Marketing">Marketing</option>
+                                   ) : (
+                                     DEPARTMENTS.map(dept => (
+                                       <option key={dept} value={dept}>{dept}</option>
+                                     ))
+                                   )}
+                                 </select>
+                               ) : (
                                 <span className="px-2 py-1 bg-slate-100 rounded-md text-[10px] font-black text-slate-500 uppercase tracking-tighter italic">
                                   {user.department}
                                 </span>
@@ -510,7 +522,16 @@ export const RoleManager = ({ addNotification }: { addNotification: any }) => {
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold text-slate-400 pl-1">Role</label>
                         <select 
-                          value={role} onChange={(e) => setRole(e.target.value as UserRole)}
+                          value={role} 
+                          onChange={(e) => {
+                            const newRole = e.target.value as UserRole;
+                            setRole(newRole);
+                            if (newRole === 'department') {
+                              setDepartment(DEPARTMENTS[0]);
+                            } else {
+                              setDepartment('Marketing');
+                            }
+                          }}
                           className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 outline-none"
                         >
                           <option value="marketing_member">Member</option>
@@ -520,10 +541,20 @@ export const RoleManager = ({ addNotification }: { addNotification: any }) => {
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-bold text-slate-400 pl-1">Department</label>
-                        <input 
-                          type="text" required value={department} onChange={(e) => setDepartment(e.target.value)}
-                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 outline-none"
-                        />
+                        <select 
+                          disabled={role !== 'department'}
+                          value={role === 'department' ? department : 'Marketing'} 
+                          onChange={(e) => setDepartment(e.target.value)}
+                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                        >
+                          {role !== 'department' ? (
+                            <option value="Marketing">Marketing</option>
+                          ) : (
+                            DEPARTMENTS.map(dept => (
+                              <option key={dept} value={dept}>{dept}</option>
+                            ))
+                          )}
+                        </select>
                       </div>
                       <button 
                         disabled={isSubmitting}
