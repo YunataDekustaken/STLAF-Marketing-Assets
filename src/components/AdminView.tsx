@@ -18,7 +18,6 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleAuth } from './GoogleAuth';
 import { Cloud, RefreshCw, Users as UsersIcon, UserCog } from 'lucide-react';
-import { UserDirectory } from './UserDirectory';
 import { RoleManager } from './RoleManager';
 
 export const AdminView = ({ 
@@ -125,10 +124,22 @@ export const AdminView = ({
           className="space-y-8"
         >
           {activeTab === 'users' && (
-            <div className="space-y-8">
-              <RoleManager addNotification={addNotification} />
-              <UserDirectory addNotification={addNotification} />
-            </div>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">User Operations</h2>
+                  <p className="text-slate-500 font-medium text-sm">Manage access requests and active user profiles.</p>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-[32px] border border-black/5 shadow-sm overflow-hidden min-h-[600px]">
+                <RoleManager addNotification={addNotification} />
+              </div>
+            </motion.div>
           )}
 
           {activeTab === 'settings' && (

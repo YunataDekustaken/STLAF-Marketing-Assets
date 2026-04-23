@@ -12,7 +12,8 @@ import {
   AlertCircle,
   CheckCircle2,
   XCircle,
-  UserCheck
+  UserCheck,
+  Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../firebase';
@@ -41,15 +42,30 @@ interface RoleAssignment {
 export const RoleManager = ({ addNotification }: { addNotification: any }) => {
   const [assignments, setAssignments] = useState<RoleAssignment[]>([]);
   const [pendingUsers, setPendingUsers] = useState<UserProfile[]>([]);
+  const [activeUsers, setActiveUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeLoading, setActiveLoading] = useState(true);
   const [pendingLoading, setPendingLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
+  const [activeTab, setActiveTab] = useState<'active' | 'registered' | 'pending'>('active');
   
+  // State for editing active users
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<{ role: UserRole, department: string } | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+
   // Form state
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<UserRole>('marketing_member');
   const [department, setDepartment] = useState('Marketing');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    // Force switch to pending tab if there are new requests
+    if (pendingUsers.length > 0 && activeTab === 'active') {
+      // Don't auto-switch, but maybe highlight it?
+    }
+  }, [pendingUsers.length]);
 
   useEffect(() => {
     // 1. Fetch pre-registered assignments
@@ -74,9 +90,21 @@ export const RoleManager = ({ addNotification }: { addNotification: any }) => {
       setPendingLoading(false);
     });
 
+    // 3. Fetch active users
+    const q3 = query(collection(db, 'users'), where('status', '==', 'active'));
+    const unsubscribe3 = onSnapshot(q3, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        uid: doc.id,
+        ...doc.data()
+      })) as any as UserProfile[];
+      setActiveUsers(data);
+      setActiveLoading(false);
+    });
+
     return () => {
       unsubscribe1();
       unsubscribe2();
+      unsubscribe3();
     };
   }, []);
 
@@ -102,6 +130,44 @@ export const RoleManager = ({ addNotification }: { addNotification: any }) => {
     }
   };
 
+  const handleDeleteUser = async (uid: string, userEmail: string) => {
+    if (!window.confirm(`Are you sure you want to PERMANENTLY DELETE the user profile for ${userEmail}? This will revoke their access immediately.`)) return;
+    try {
+      await deleteDoc(doc(db, 'users', uid));
+      
+      // Also try to find and delete their role assignment if exists
+      const assignment = assignments.find(a => a.email.toLowerCase() === userEmail.toLowerCase());
+      if (assignment) {
+        await deleteDoc(doc(db, 'roleAssignments', assignment.id));
+      }
+      
+      addNotification('User Deleted', `Account profile for ${userEmail} was removed.`, 'info');
+    } catch (err: any) {
+      addNotification('Error', `Failed to delete user profile: ${err.message}`, 'warning');
+    }
+  };
+
+  const handleUpdateUser = async (uid: string) => {
+    if (!editValues) return;
+    setIsUpdating(true);
+    try {
+      const userRef = doc(db, 'users', uid);
+      await updateDoc(userRef, {
+        role: editValues.role,
+        department: editValues.department
+      });
+      
+      setEditingUserId(null);
+      setEditValues(null);
+      addNotification('Success', 'User profile updated successfully', 'success');
+    } catch (error: any) {
+      console.error('Error updating user:', error);
+      addNotification('Error', 'Failed to update user: ' + error.message, 'warning');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
@@ -118,6 +184,7 @@ export const RoleManager = ({ addNotification }: { addNotification: any }) => {
       addNotification('User Registered', `${email} has been assigned the ${role} role.`, 'success');
       setEmail('');
       setIsAdding(false);
+      setActiveTab('registered');
     } catch (err: any) {
       addNotification('Error', `Failed to register user: ${err.message}`, 'warning');
     } finally {
@@ -149,220 +216,364 @@ export const RoleManager = ({ addNotification }: { addNotification: any }) => {
   };
 
   return (
-    <div className="space-y-8">
-      {/* Pending Approvals Section */}
-      {pendingUsers.length > 0 && (
-        <div className="bg-amber-50 rounded-2xl p-8 border border-amber-200 shadow-sm">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="p-3 bg-amber-500 rounded-xl">
-              <UserCheck className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-amber-900">Pending Account Approvals</h3>
-              <p className="text-xs text-amber-700">New users waiting for access to the portal.</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {pendingUsers.map(user => (
-              <div key={user.uid} className="bg-white p-4 rounded-xl border border-amber-100 flex items-center justify-between group">
-                <div className="flex items-center gap-3">
-                  {user.photoURL ? (
-                    <img src={user.photoURL} alt={user.displayName} className="w-10 h-10 rounded-full" referrerPolicy="no-referrer" />
-                  ) : (
-                    <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center">
-                      <User className="w-5 h-5 text-slate-400" />
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">{user.displayName}</p>
-                    <p className="text-[10px] font-medium text-slate-400">{user.email}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button 
-                    onClick={() => handleApproveUser(user.uid, user.email)}
-                    className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                    title="Approve Account"
-                  >
-                    <CheckCircle2 className="w-5 h-5" />
-                  </button>
-                  <button 
-                    onClick={() => handleRejectUser(user.uid, user.email)}
-                    className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
-                    title="Reject Account"
-                  >
-                    <XCircle className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-200">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-amber-50 rounded-xl">
-            <UserPlus className="w-6 h-6 text-amber-600" />
-          </div>
+    <div className="space-y-6">
+      {/* Stats Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between group hover:border-amber-200 transition-all">
           <div>
-            <h3 className="text-xl font-bold text-slate-900">User Role Management</h3>
-            <p className="text-xs text-slate-500">Register Gmail accounts and pre-assign access levels.</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Active Users</p>
+            <p className="text-3xl font-black text-slate-900">{activeUsers.length}</p>
+          </div>
+          <div className="p-3 bg-emerald-50 rounded-2xl group-hover:scale-110 transition-transform">
+            <UserCheck className="w-6 h-6 text-emerald-500" />
           </div>
         </div>
-        
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between group hover:border-amber-200 transition-all cursor-pointer" onClick={() => setActiveTab('pending')}>
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Access Requests</p>
+            <p className={`text-3xl font-black ${pendingUsers.length > 0 ? 'text-rose-500' : 'text-slate-900'}`}>{pendingUsers.length}</p>
+          </div>
+          <div className={`p-3 rounded-2xl group-hover:scale-110 transition-transform ${pendingUsers.length > 0 ? 'bg-rose-50' : 'bg-slate-50'}`}>
+            <AlertCircle className={`w-6 h-6 ${pendingUsers.length > 0 ? 'text-rose-500' : 'text-slate-400'}`} />
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between group hover:border-amber-200 transition-all">
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pre-registered</p>
+            <p className="text-3xl font-black text-slate-900">{assignments.length}</p>
+          </div>
+          <div className="p-3 bg-amber-50 rounded-2xl group-hover:scale-110 transition-transform">
+            <Shield className="w-6 h-6 text-amber-500" />
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs Header */}
+      <div className="flex flex-wrap items-center gap-2 bg-slate-100/80 p-1.5 rounded-2xl w-fit backdrop-blur-sm border border-slate-200/50">
         <button 
-          onClick={() => setIsAdding(!isAdding)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm ${
-            isAdding 
-              ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' 
-              : 'bg-amber-500 text-primary-dark hover:bg-amber-600'
-          }`}
+          onClick={() => setActiveTab('active')}
+          className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'active' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}
         >
-          {isAdding ? <Plus className="w-4 h-4 rotate-45" /> : <Plus className="w-4 h-4" />}
-          {isAdding ? 'Cancel' : 'Register New User'}
+          <Users className="w-4 h-4" />
+          Directory
+        </button>
+        <button 
+          onClick={() => setActiveTab('pending')}
+          className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'pending' ? 'bg-white text-rose-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}
+        >
+          <AlertCircle className={`w-4 h-4 ${pendingUsers.length > 0 ? 'text-rose-500 animate-pulse' : ''}`} />
+          Pending
+        </button>
+        <button 
+          onClick={() => setActiveTab('registered')}
+          className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'registered' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'}`}
+        >
+          <Plus className="w-4 h-4" />
+          Whitelist
         </button>
       </div>
 
-      <AnimatePresence>
-        {isAdding && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden mb-8"
-          >
-            <form onSubmit={handleAdd} className="p-6 bg-slate-50 rounded-2xl border border-slate-200 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Gmail Address</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input 
-                      type="email" 
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="user@gmail.com"
-                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all"
-                    />
+      <div className="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-200">
+        <div className="p-8">
+          <AnimatePresence mode="wait">
+            {activeTab === 'active' && (
+              <motion.div
+                key="active-tab"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900">Active Access</h3>
+                    <p className="text-xs text-slate-500">Users currently active in the portal.</p>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Assigned Role</label>
-                  <select 
-                    value={role}
-                    onChange={(e) => setRole(e.target.value as UserRole)}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all appearance-none cursor-pointer"
-                  >
-                    <option value="marketing_member">Marketing Member</option>
-                    <option value="marketing_supervisor">Marketing Supervisor (Admin)</option>
-                    <option value="department">Department Representative</option>
-                  </select>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-100">
+                        <th className="text-left py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">User</th>
+                        <th className="text-left py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Role</th>
+                        <th className="text-left py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Department</th>
+                        <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeLoading ? (
+                        <tr>
+                          <td colSpan={4} className="py-12 text-center"><Loader2 className="w-8 h-8 text-emerald-500 animate-spin mx-auto" /></td>
+                        </tr>
+                      ) : activeUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-20 text-center text-slate-400">No active users yet.</td>
+                        </tr>
+                      ) : (
+                        activeUsers.map(user => (
+                          <tr key={user.uid} className={`border-b border-slate-50 hover:bg-slate-50/50 transition-colors group ${editingUserId === user.uid ? 'bg-amber-50/50' : ''}`}>
+                            <td className="py-4 px-4">
+                              <div className="flex items-center gap-3">
+                                {user.photoURL ? (
+                                  <img src={user.photoURL} alt={user.displayName} className="w-8 h-8 rounded-full shadow-sm" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center"><User className="w-4 h-4 text-slate-400" /></div>
+                                )}
+                                <div>
+                                  <p className="text-sm font-black text-slate-900 leading-tight">{user.displayName}</p>
+                                  <p className="text-[10px] text-slate-400 font-bold">{user.email}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-4">
+                              {editingUserId === user.uid ? (
+                                <select 
+                                  value={editValues?.role}
+                                  onChange={(e) => setEditValues(prev => prev ? { ...prev, role: e.target.value as UserRole } : null)}
+                                  className="w-full text-xs font-bold p-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
+                                >
+                                  <option value="marketing_member">Marketing Member</option>
+                                  <option value="marketing_supervisor">Marketing Supervisor</option>
+                                  <option value="department">Department</option>
+                                </select>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  {getRoleIcon(user.role)}
+                                  <span className="text-xs font-semibold text-slate-600">{getRoleLabel(user.role)}</span>
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-4 px-4">
+                              {editingUserId === user.uid ? (
+                                <select 
+                                  value={editValues?.department}
+                                  onChange={(e) => setEditValues(prev => prev ? { ...prev, department: e.target.value } : null)}
+                                  className="w-full text-xs font-bold p-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
+                                >
+                                  <option value="Marketing">Marketing</option>
+                                  <option value="Creative">Creative</option>
+                                  <option value="Content">Content</option>
+                                  <option value="Social">Social</option>
+                                  <option value="PR">PR</option>
+                                </select>
+                              ) : (
+                                <span className="px-2 py-1 bg-slate-100 rounded-md text-[10px] font-black text-slate-500 uppercase tracking-tighter italic">
+                                  {user.department}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-4 px-4 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {editingUserId === user.uid ? (
+                                  <>
+                                    <button 
+                                      onClick={() => handleUpdateUser(user.uid)}
+                                      disabled={isUpdating}
+                                      className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all"
+                                      title="Save Changes"
+                                    >
+                                      {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                                    </button>
+                                    <button 
+                                      onClick={() => { setEditingUserId(null); setEditValues(null); }}
+                                      className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                      title="Cancel Edit"
+                                    >
+                                      <XCircle className="w-4 h-4" />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button 
+                                      onClick={() => {
+                                        setEditingUserId(user.uid);
+                                        setEditValues({ role: user.role, department: user.department });
+                                      }}
+                                      className="p-2 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-all"
+                                      title="Edit User"
+                                    >
+                                      <UserPlus className="w-4 h-4" />
+                                    </button>
+                                    <button 
+                                      onClick={() => handleDeleteUser(user.uid, user.email)}
+                                      className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                      title="Delete User"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Department</label>
-                  <div className="relative">
-                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input 
-                      type="text" 
-                      required
-                      value={department}
-                      onChange={(e) => setDepartment(e.target.value)}
-                      placeholder="e.g. Marketing, Sales"
-                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <button 
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-8 py-3 bg-amber-500 hover:bg-amber-600 text-primary-dark rounded-xl text-sm font-bold transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                  Register User
-                </button>
-              </div>
-            </form>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-slate-100">
-              <th className="text-left py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Email Address</th>
-              <th className="text-left py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Assigned Role</th>
-              <th className="text-left py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Department</th>
-              <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={4} className="py-20 text-center">
-                  <Loader2 className="w-8 h-8 text-amber-500 animate-spin mx-auto" />
-                  <p className="text-sm text-slate-400 mt-2 font-medium">Loading registered users...</p>
-                </td>
-              </tr>
-            ) : assignments.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="py-20 text-center bg-slate-50 rounded-2xl mt-4">
-                  <div className="flex flex-col items-center gap-3">
-                    <Users className="w-10 h-10 text-slate-200" />
-                    <p className="text-sm text-slate-400 font-medium">No users registered yet.</p>
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              assignments.map((item) => (
-                <tr key={item.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
-                  <td className="py-4 px-4">
-                    <p className="text-sm font-bold text-slate-900">{item.email}</p>
-                  </td>
-                  <td className="py-4 px-4">
-                    <div className="flex items-center gap-2">
-                      {getRoleIcon(item.role)}
-                      <span className="text-xs font-semibold text-slate-600">{getRoleLabel(item.role)}</span>
-                    </div>
-                  </td>
-                  <td className="py-4 px-4">
-                    <span className="text-xs font-medium text-slate-500 italic">{item.department}</span>
-                  </td>
-                  <td className="py-4 px-4 text-right">
-                    <button 
-                      onClick={() => handleDelete(item.id, item.email)}
-                      className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
-                      title="Remove Registration"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))
+              </motion.div>
             )}
-          </tbody>
-        </table>
-      </div>
 
-      <div className="mt-8 flex items-start gap-4 p-4 bg-blue-50 border border-blue-100 rounded-2xl">
-        <AlertCircle className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <p className="text-xs font-bold text-blue-900">How this works:</p>
-          <p className="text-xs text-blue-800 leading-relaxed">
-            When a user with a registered Gmail address signs in, the system automatically corrects their role and department to match your settings. 
-            <strong> Existing users will have their roles updated on their next login.</strong>
-          </p>
+            {activeTab === 'pending' && (
+              <motion.div
+                key="pending-tab"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">Access Requests</h3>
+                  <p className="text-xs text-slate-500">New sign-ins awaiting your verification.</p>
+                </div>
+
+                {pendingUsers.length === 0 ? (
+                  <div className="py-20 text-center bg-slate-50 rounded-2xl flex flex-col items-center gap-3">
+                    <UserCheck className="w-10 h-10 text-slate-200" />
+                    <p className="text-sm text-slate-400 font-medium">All caught up! No requests pending.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {pendingUsers.map(user => (
+                      <div key={user.uid} className="p-5 bg-white border-2 border-amber-100 rounded-2xl shadow-sm space-y-4 hover:border-amber-200 transition-all">
+                        <div className="flex items-center gap-3">
+                          {user.photoURL ? (
+                            <img src={user.photoURL} className="w-12 h-12 rounded-xl shadow-sm" referrerPolicy="no-referrer" />
+                          ) : (
+                            <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center"><User className="w-6 h-6 text-slate-400" /></div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-sm font-black text-slate-900 truncate">{user.displayName}</p>
+                            <p className="text-[10px] font-medium text-slate-400 truncate">{user.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => handleApproveUser(user.uid, user.email)}
+                            className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold rounded-lg transition-all"
+                          >
+                            Approve
+                          </button>
+                          <button 
+                            onClick={() => handleRejectUser(user.uid, user.email)}
+                            className="flex-1 py-2 bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-500 text-[10px] font-bold rounded-lg transition-all"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {activeTab === 'registered' && (
+              <motion.div
+                key="registered-tab"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900">Pre-registered Roles</h3>
+                    <p className="text-xs text-slate-500">Set permissions before a user even signs in.</p>
+                  </div>
+                  <button 
+                    onClick={() => setIsAdding(!isAdding)}
+                    className="px-4 py-2 bg-amber-500 text-primary-dark rounded-xl text-xs font-bold hover:bg-amber-600 transition-all shadow-sm flex items-center gap-2"
+                  >
+                    {isAdding ? <XCircle className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    {isAdding ? 'Cancel' : 'Register Email'}
+                  </button>
+                </div>
+
+                <AnimatePresence>
+                  {isAdding && (
+                    <motion.form 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      onSubmit={handleAdd} 
+                      className="p-6 bg-slate-50 rounded-2xl border border-slate-200 grid grid-cols-1 md:grid-cols-4 gap-4 items-end shadow-inner"
+                    >
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-400 pl-1">Gmail</label>
+                        <input 
+                          type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 outline-none"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-400 pl-1">Role</label>
+                        <select 
+                          value={role} onChange={(e) => setRole(e.target.value as UserRole)}
+                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 outline-none"
+                        >
+                          <option value="marketing_member">Member</option>
+                          <option value="marketing_supervisor">Supervisor</option>
+                          <option value="department">Department</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-slate-400 pl-1">Department</label>
+                        <input 
+                          type="text" required value={department} onChange={(e) => setDepartment(e.target.value)}
+                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 outline-none"
+                        />
+                      </div>
+                      <button 
+                        disabled={isSubmitting}
+                        className="py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-all disabled:opacity-50"
+                      >
+                        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Confirm Register'}
+                      </button>
+                    </motion.form>
+                  )}
+                </AnimatePresence>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-100">
+                        <th className="text-left py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Email</th>
+                        <th className="text-left py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Role</th>
+                        <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loading ? (
+                        <tr><td colSpan={3} className="py-12 text-center"><Loader2 className="w-8 h-8 text-amber-500 animate-spin mx-auto" /></td></tr>
+                      ) : assignments.length === 0 ? (
+                        <tr><td colSpan={3} className="py-20 text-center text-slate-400 italic">No pre-registrations yet.</td></tr>
+                      ) : (
+                        assignments.map(item => (
+                          <tr key={item.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                            <td className="py-4 px-4"><p className="text-sm font-bold text-slate-900">{item.email}</p></td>
+                            <td className="py-4 px-4"><span className="text-xs font-medium text-slate-500">{getRoleLabel(item.role)} ({item.department})</span></td>
+                            <td className="py-4 px-4 text-right">
+                              <button onClick={() => handleDelete(item.id, item.email)} className="p-2 text-slate-300 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
+          
+      <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex gap-3">
+        <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+        <p className="text-[10px] text-blue-800 leading-relaxed">
+          <strong>Tip:</strong> Users with pre-registered emails will automatically skip the "Pending" status and receive their assigned role on their first login. Use this to onboard your team faster.
+        </p>
       </div>
     </div>
   );

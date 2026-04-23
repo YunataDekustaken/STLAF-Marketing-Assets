@@ -69,9 +69,27 @@
         "assignedBy": { "type": "string", "description": "The user ID who created this assignment" }
       },
       "required": ["email", "role"]
+    },
+    "PinnedAsset": {
+      "title": "PinnedAsset",
+      "description": "An asset pinned for quick access by a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "assetId": { "type": "string" },
+        "name": { "type": "string" },
+        "mimeType": { "type": "string" },
+        "pinnedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "assetId", "name"]
     }
   },
   "firestore": {
+    "/pinnedAssets/{pinId}": {
+      "schema": "PinnedAsset",
+      "description": "User-specific pinned assets and folders"
+    },
     "/roleAssignments/{assignmentId}": {
       "schema": "RoleAssignment",
       "description": "Pre-registered role assignments for Gmail users"

@@ -45,5 +45,11 @@ service cloud.firestore {
       allow read: if isActive();
       allow write: if isAdmin();
     }
+
+    match /pinnedAssets/{pinId} {
+      allow read: if isActive() && resource.data.userId == request.auth.uid;
+      allow create: if isActive() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isActive() && resource.data.userId == request.auth.uid;
+    }
   }
 }

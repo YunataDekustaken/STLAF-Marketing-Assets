@@ -194,5 +194,94 @@ export const persistenceService = {
       window.addEventListener('storage_settings', handleSettingsUpdate);
       return () => window.removeEventListener('storage_settings', handleSettingsUpdate);
     }
+  },
+
+  // Pinned Assets
+  subscribeToPinnedAssets(userId: string, callback: (pins: any[]) => void) {
+    if (isFirebaseConfigured) {
+      const q = query(
+        collection(db, 'pinnedAssets'),
+        where('userId', '==', userId)
+      );
+      return onSnapshot(q, (snapshot) => {
+        const pins = snapshot.docs.map(doc => ({ 
+          ...doc.data(), 
+          id: doc.id,
+          assetId: doc.data().assetId
+        }))
+        .sort((a: any, b: any) => {
+          const timeA = a.pinnedAt?.toMillis ? a.pinnedAt.toMillis() : (a.pinnedAt || 0);
+          const timeB = b.pinnedAt?.toMillis ? b.pinnedAt.toMillis() : (b.pinnedAt || 0);
+          return timeB - timeA;
+        });
+        callback(pins);
+      });
+    }
+    return () => {};
+  },
+
+  async togglePinnedAsset(userId: string, asset: any) {
+    if (!isFirebaseConfigured) return;
+    
+    const q = query(
+      collection(db, 'pinnedAssets'),
+      where('userId', '==', userId),
+      where('assetId', '==', asset.id)
+    );
+    
+    const { getDocs } = await import('firebase/firestore');
+    const snapshot = await getDocs(q);
+    
+    if (!snapshot.empty) {
+      // Unpin
+      await Promise.all(snapshot.docs.map(d => deleteDoc(doc(db, 'pinnedAssets', d.id))));
+      return false; // Removed
+    } else {
+      // Pin
+      await addDoc(collection(db, 'pinnedAssets'), {
+        userId,
+        assetId: asset.id,
+        name: asset.name,
+        mimeType: asset.mimeType,
+        pinnedAt: serverTimestamp()
+      });
+      return true; // Added
+    }
+  },
+
+  // User Settings (Notification preferences etc)
+  async saveUserSettings(userId: string, settings: any) {
+    if (isFirebaseConfigured) {
+      await setDoc(doc(db, 'users', userId), { notificationSettings: settings }, { merge: true });
+    }
+  },
+
+  subscribeToUserSettings(userId: string, callback: (settings: any) => void) {
+    if (isFirebaseConfigured) {
+      return onSnapshot(doc(db, 'users', userId), (snapshot) => {
+        if (snapshot.exists()) {
+          callback(snapshot.data()?.notificationSettings || {});
+        }
+      });
+    }
+    return () => {};
+  },
+
+  // Global Settings (Quick Links etc)
+  async saveQuickLinks(links: any[]) {
+    if (isFirebaseConfigured) {
+      await setDoc(doc(db, 'settings', 'navigation'), { quickLinks: links }, { merge: true });
+    }
+  },
+
+  subscribeToQuickLinks(callback: (links: any[]) => void) {
+    if (isFirebaseConfigured) {
+      return onSnapshot(doc(db, 'settings', 'navigation'), (snapshot) => {
+        if (snapshot.exists()) {
+          callback(snapshot.data()?.quickLinks || []);
+        }
+      });
+    }
+    return () => {};
   }
 };

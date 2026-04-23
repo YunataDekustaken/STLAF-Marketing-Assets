@@ -87,6 +87,38 @@ function AppContent() {
     }
   }, [user]);
 
+  // Subscribe to real-time pins from Firestore
+  useEffect(() => {
+    if (user) {
+      const unsubscribe = persistenceService.subscribeToPinnedAssets(user.uid, (data) => {
+        setPinnedAssets(data);
+      });
+      return () => unsubscribe();
+    }
+  }, [user]);
+
+  // Subscribe to real-time notification settings
+  useEffect(() => {
+    if (user) {
+      const unsubscribe = persistenceService.subscribeToUserSettings(user.uid, (data) => {
+        if (Object.keys(data).length > 0) {
+          setNotificationSettings(data);
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [user]);
+
+  // Subscribe to real-time quick links
+  useEffect(() => {
+    const unsubscribe = persistenceService.subscribeToQuickLinks((data) => {
+      if (data.length > 0) {
+        setQuickLinks(data);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   const [selectedPreviewFile, setSelectedPreviewFile] = useState<any | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<any | null>(null);
   const [homeResetToken, setHomeResetToken] = useState(0);
@@ -149,22 +181,24 @@ function AppContent() {
   }, []);
 
   const handleUpdateNotificationSettings = (settings: any) => {
-    setNotificationSettings(settings);
-    // In a real app, we would save this to Firestore user settings
+    if (user) {
+      persistenceService.saveUserSettings(user.uid, settings);
+      setNotificationSettings(settings);
+    }
   };
 
-  const togglePinAsset = (asset: any) => {
-    const isPinned = pinnedAssets.some(p => p.id === asset.id);
-    if (isPinned) {
-      setPinnedAssets(prev => prev.filter(p => p.id !== asset.id));
+  const togglePinAsset = async (asset: any) => {
+    if (!user) return;
+    const isAdded = await persistenceService.togglePinnedAsset(user.uid, asset);
+    if (!isAdded) {
       addNotification('Unpinned', `${asset.name} removed from quick access.`, 'info');
     } else {
-      setPinnedAssets(prev => [asset, ...prev]);
       addNotification('Pinned', `${asset.name} added to quick access.`, 'success');
     }
   };
 
   const updateQuickLinks = (links: {id: string, name: string, url: string}[]) => {
+    persistenceService.saveQuickLinks(links);
     setQuickLinks(links);
     addNotification('Links Updated', 'Sidebar quick links have been updated.', 'success');
   };
