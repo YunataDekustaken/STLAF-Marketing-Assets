@@ -30,7 +30,7 @@ import {
   ClipboardList
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ViewMode, RequestItem, INITIAL_REQUESTS } from './types';
+import { ViewMode } from './types';
 import { db, googleProvider, isFirebaseConfigured } from './firebase';
 import { 
   doc, 
@@ -40,7 +40,6 @@ import { persistenceService } from './services/persistenceService';
 
 import { AdminView } from './components/AdminView';
 import { AssetsView } from './components/AssetsView';
-import { RequestsView } from './components/RequestsView';
 import { ROOT_FOLDER_ID } from './hooks/useGoogleDrive';
 
 enum OperationType {
@@ -56,16 +55,38 @@ const handleFirestoreError = (error: unknown, operationType: OperationType, path
   console.error('Firestore Error: ', error, operationType, path);
 };
 
+// Helper to format timestamps
+const formatNotificationTime = (timestamp: any) => {
+  if (!timestamp) return 'Just now';
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return 'Just now';
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+  return date.toLocaleDateString();
+};
+
 function AppContent() {
   const { user, profile, loading, login, logout } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>('assets');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
-  const [assetRequests, setAssetRequests] = useState<RequestItem[]>(INITIAL_REQUESTS);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [toasts, setToasts] = useState<{id: string, message: string, type: 'success' | 'info' | 'error'}[]>([]);
+
+  // Subscribe to real-time notifications from Firestore
+  useEffect(() => {
+    if (user) {
+      const unsubscribe = persistenceService.subscribeToNotifications(user.uid, (data) => {
+        setNotifications(data);
+      });
+      return () => unsubscribe();
+    }
+  }, [user]);
+
   const [selectedPreviewFile, setSelectedPreviewFile] = useState<any | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<any | null>(null);
   const [homeResetToken, setHomeResetToken] = useState(0);
@@ -97,15 +118,14 @@ function AppContent() {
 
     if (isEnabled) {
       const newNotification = {
-        id: Date.now().toString(),
         title,
         message,
         type,
-        time: 'Just now',
         read: false,
-        file
+        userId: user?.uid || 'guest',
+        file: file ? { id: file.id, name: file.name, mimeType: file.mimeType } : null
       };
-      setNotifications(prev => [newNotification, ...prev]);
+      persistenceService.addNotification(newNotification);
     }
     
     // Toasts are always shown for immediate feedback regardless of history settings
@@ -127,11 +147,6 @@ function AppContent() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const updateRequestStatus = (id: string, newStatus: 'pending' | 'approved' | 'rejected') => {
-    setAssetRequests(prev => prev.map(req => req.id === id ? { ...req, status: newStatus } : req));
-    addNotification('Status Updated', `Request status changed to ${newStatus}.`, 'success', 'assetRequests');
-  };
 
   const handleUpdateNotificationSettings = (settings: any) => {
     setNotificationSettings(settings);
@@ -268,28 +283,6 @@ function AppContent() {
               )}
             </AnimatePresence>
           </button>
-
-          {profile?.role === 'marketing_supervisor' && (
-            <button 
-              onClick={() => setViewMode('requests')}
-              className={`w-full flex items-center ${isSidebarCollapsed && !isSidebarHovered ? 'justify-center' : 'gap-3 px-4'} py-3 rounded-xl font-semibold transition-all duration-300 ease-in-out ${viewMode === 'requests' ? 'bg-slate-700/50 text-amber-500 border-l-4 border-amber-500' : 'hover:bg-white/10 hover:text-white text-slate-400'}`}
-            >
-              <ClipboardList className="w-5 h-5 shrink-0" />
-              <AnimatePresence>
-                {(!isSidebarCollapsed || isSidebarHovered) && (
-                  <motion.span 
-                    key="requests-text"
-                    initial={{ opacity: 0, width: 0 }}
-                    animate={{ opacity: 1, width: 'auto' }}
-                    exit={{ opacity: 0, width: 0 }}
-                    className="whitespace-nowrap overflow-hidden"
-                  >
-                    Asset Requests
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </button>
-          )}
           
           {profile?.role === 'marketing_supervisor' && (
             <div className="pt-4 mt-4 border-t border-slate-700/50">
@@ -431,16 +424,9 @@ function AppContent() {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-40">
           <h1 className="text-lg font-bold text-slate-800">
-            {viewMode === 'assets' ? 'Marketing Assets' : viewMode === 'requests' ? 'Asset Requests' : 'Admin Center'}
+            {viewMode === 'assets' ? 'Marketing Assets' : 'Admin Center'}
           </h1>
           <div className="flex items-center gap-6">
-            <button
-              onClick={() => setIsRequestModalOpen(true)}
-              className="hidden md:flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded-xl text-sm font-bold transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Request Asset
-            </button>
             
               <div className="relative" ref={notificationRef}>
                 <button 
@@ -463,7 +449,10 @@ function AppContent() {
                       <div className="flex items-center justify-between px-6 py-5 border-b border-slate-50">
                         <h3 className="text-xl font-bold text-slate-900">Notifications</h3>
                         <button 
-                          onClick={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
+                          onClick={async () => {
+                            const unread = notifications.filter(n => !n.read);
+                            await Promise.all(unread.map(n => persistenceService.updateNotification(n.id, { read: true })));
+                          }}
                           className="text-[11px] text-amber-600 hover:text-amber-700 transition-colors uppercase font-bold tracking-wider"
                         >
                           Mark all read
@@ -481,7 +470,9 @@ function AppContent() {
                                     setViewMode('assets');
                                     setShowNotifications(false);
                                   }
-                                  setNotifications(prev => prev.map(notif => notif.id === n.id ? { ...notif, read: true } : notif));
+                                  if (!n.read) {
+                                    persistenceService.updateNotification(n.id, { read: true });
+                                  }
                                 }}
                                 className={`group relative p-6 transition-all hover:bg-slate-50/80 cursor-pointer ${!n.read ? 'bg-amber-50/20' : ''}`}
                               >
@@ -490,14 +481,14 @@ function AppContent() {
                                 )}
                                 <div className="flex justify-between items-start mb-2">
                                   <h4 className="text-[15px] font-bold text-slate-900 pr-8">{n.title}</h4>
-                                  <span className="text-[11px] text-slate-400 font-medium whitespace-nowrap">{n.time}</span>
+                                  <span className="text-[11px] text-slate-400 font-medium whitespace-nowrap">{formatNotificationTime(n.createdAt)}</span>
                                 </div>
                                 <p className="text-[13px] text-slate-500 leading-relaxed pr-6">{n.message}</p>
                                 
                                 <button 
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setNotifications(prev => prev.filter(notif => notif.id !== n.id));
+                                    persistenceService.deleteNotification(n.id);
                                   }}
                                   className="absolute right-4 top-6 p-1.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-rose-50"
                                 >
@@ -519,7 +510,7 @@ function AppContent() {
                       {notifications.length > 0 && (
                         <div className="p-4 bg-slate-50/50 border-t border-slate-100">
                           <button 
-                            onClick={() => setNotifications([])}
+                            onClick={() => user && persistenceService.clearAllNotifications(user.uid)}
                             className="w-full py-3 text-[11px] text-slate-500 hover:text-rose-600 transition-colors uppercase font-bold tracking-widest text-center"
                           >
                             Clear all notifications
@@ -547,12 +538,6 @@ function AppContent() {
                 onTogglePin={togglePinAsset}
                 hasAdminAccess={hasAdminAccess}
                 userRole={profile?.role}
-              />
-            ) : viewMode === 'requests' && profile?.role === 'marketing_supervisor' ? (
-              <RequestsView 
-                requests={assetRequests} 
-                hasAdminAccess={hasAdminAccess}
-                onStatusChange={updateRequestStatus}
               />
             ) : viewMode === 'admin' && profile?.role === 'marketing_supervisor' ? (
               <AdminView 
@@ -604,92 +589,6 @@ function AppContent() {
           </AnimatePresence>
         </div>
       </div>
-
-      {/* Request Asset Modal */}
-      <AnimatePresence>
-        {isRequestModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-primary-dark/40 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
-            >
-              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <h2 className="text-lg font-bold text-slate-900">Request an Asset</h2>
-                <button onClick={() => setIsRequestModalOpen(false)} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
-                  <X className="w-5 h-5 text-slate-500" />
-                </button>
-              </div>
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  
-                  const formData = new FormData(e.currentTarget);
-                  const newRequest: RequestItem = {
-                    id: Math.random().toString(36).substr(2, 9),
-                    name: formData.get('name') as string,
-                    department: formData.get('department') as string,
-                    asset: formData.get('asset') as string,
-                    status: 'pending',
-                    date: new Date().toISOString().split('T')[0]
-                  };
-                  
-                  setAssetRequests(prev => [newRequest, ...prev]);
-                  addNotification('Request Submitted', 'Marketing team will review and add the asset soon.', 'success', 'assetRequests');
-                  setIsRequestModalOpen(false);
-                }}
-              >
-                <div className="p-6 space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Your Name</label>
-                    <input 
-                      required
-                      name="name"
-                      type="text" 
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
-                      placeholder="John Doe"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Department</label>
-                    <select 
-                      required
-                      name="department"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
-                    >
-                      <option value="">Select...</option>
-                      <option value="Sales">Sales</option>
-                      <option value="Engineering">Engineering</option>
-                      <option value="Customer Success">Customer Success</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Requested Asset</label>
-                    <input 
-                      required
-                      name="asset"
-                      type="text" 
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
-                      placeholder="e.g. Holiday campaign banner"
-                    />
-                  </div>
-                </div>
-                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-                  <button type="button" onClick={() => setIsRequestModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800">Cancel</button>
-                  <button 
-                    type="submit"
-                    className="px-6 py-2 bg-amber-500 hover:bg-amber-600 text-primary-dark text-sm font-bold rounded-lg transition-colors shadow-sm"
-                  >
-                    Submit Request
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

@@ -91,6 +91,53 @@ export const persistenceService = {
     }
   },
 
+  async updateNotification(id: string, updates: any) {
+    if (isFirebaseConfigured) {
+      await setDoc(doc(db, 'notifications', id), updates, { merge: true });
+    } else {
+      const notifs = this.getLocalNotifications();
+      const index = notifs.findIndex(n => n.id === id);
+      if (index !== -1) {
+        notifs[index] = { ...notifs[index], ...updates };
+        localStorage.setItem(LOCAL_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(notifs));
+        window.dispatchEvent(new Event('storage_notifications'));
+      }
+    }
+  },
+
+  async deleteNotification(id: string) {
+    if (isFirebaseConfigured) {
+      await deleteDoc(doc(db, 'notifications', id));
+    } else {
+      const notifs = this.getLocalNotifications();
+      const filtered = notifs.filter(n => n.id !== id);
+      localStorage.setItem(LOCAL_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify(filtered));
+      window.dispatchEvent(new Event('storage_notifications'));
+    }
+  },
+
+  async clearAllNotifications(userId: string) {
+    if (isFirebaseConfigured) {
+      const q = query(collection(db, 'notifications'), where('userId', '==', userId));
+      const notifs = await persistenceService.getLocalNotificationsForUserOnce(userId);
+      await Promise.all(notifs.map(n => deleteDoc(doc(db, 'notifications', n.id))));
+    } else {
+      localStorage.setItem(LOCAL_STORAGE_KEYS.NOTIFICATIONS, JSON.stringify([]));
+      window.dispatchEvent(new Event('storage_notifications'));
+    }
+  },
+
+  async getLocalNotificationsForUserOnce(userId: string): Promise<any[]> {
+    // Helper for clearing
+    if (isFirebaseConfigured) {
+      const { getDocs } = await import('firebase/firestore');
+      const q = query(collection(db, 'notifications'), where('userId', '==', userId));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    }
+    return [];
+  },
+
   getLocalNotifications(): any[] {
     const stored = localStorage.getItem(LOCAL_STORAGE_KEYS.NOTIFICATIONS);
     return stored ? JSON.parse(stored) : [];
@@ -99,15 +146,20 @@ export const persistenceService = {
   subscribeToNotifications(userId: string | null, callback: (notifs: any[]) => void) {
     if (isFirebaseConfigured) {
       const targetUserId = userId || 'guest_user';
+      // Simplified query to avoid immediate index requirement
       const q = query(
         collection(db, 'notifications'),
         where('userId', '==', targetUserId),
-        orderBy('createdAt', 'desc'),
-        limit(50)
+        limit(100)
       );
       return onSnapshot(q, (snapshot) => {
-        const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        callback(notifs);
+        const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+          .sort((a: any, b: any) => {
+            const timeA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+            const timeB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+            return timeB.getTime() - timeA.getTime();
+          });
+        callback(notifs.slice(0, 50));
       });
     } else {
       callback(this.getLocalNotifications());

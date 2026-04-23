@@ -187,7 +187,7 @@ export const AssetsView = ({
                     >
                       <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
                     </button>
-                    {userRole !== 'department' && (
+                    {userRole === 'marketing_supervisor' && (
                       <a 
                         href={`https://drive.google.com/drive/folders/1MWfdDx8uR55IKsgo9Y741BuxR-EJoesU`}
                         target="_blank"
@@ -266,7 +266,7 @@ export const AssetsView = ({
           </div>
 
           <div className="space-y-8">
-            {isConfigError ? (
+            {isConfigError && userRole === 'marketing_supervisor' ? (
               <div className="p-8 bg-amber-50 rounded-3xl border border-amber-200">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-amber-500 rounded-xl">
@@ -287,7 +287,7 @@ export const AssetsView = ({
                   </ol>
                 </div>
               </div>
-            ) : isApiDisabledError ? (
+            ) : isApiDisabledError && userRole === 'marketing_supervisor' ? (
               <div className="p-8 bg-rose-50 rounded-3xl border border-rose-200">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-rose-500 rounded-xl">
@@ -310,6 +310,12 @@ export const AssetsView = ({
                     Enable Google Drive API
                   </a>
                 </div>
+              </div>
+            ) : isConfigError || isApiDisabledError ? (
+              <div className="p-8 bg-slate-50 rounded-3xl border border-slate-200 text-center">
+                 <Cloud className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                 <h3 className="text-lg font-bold text-slate-900">Connection Unavailable</h3>
+                 <p className="text-slate-500">The library is currently undergoing maintenance or is not properly configured. Please contact your supervisor.</p>
               </div>
             ) : (
               <AssetGallery 

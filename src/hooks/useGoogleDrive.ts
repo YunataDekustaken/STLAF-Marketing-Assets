@@ -100,8 +100,14 @@ export const useGoogleDrive = (
   const deleteFile = async (fileId: string) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/drive/files/${fileId}`, {
+      const headers: Record<string, string> = {};
+      if (googleAccessToken) {
+        headers['Authorization'] = `Bearer ${googleAccessToken}`;
+      }
+
+      const response = await fetch(`/api/drive/files/${fileId}?folderId=${currentFolderId}`, {
         method: 'DELETE',
+        headers,
       });
 
       const text = await response.text();
@@ -112,7 +118,13 @@ export const useGoogleDrive = (
         } catch (e) {
           throw new Error(`Delete failed (${response.status}): ${text.substring(0, 100)}`);
         }
-        throw new Error(data.error || `Delete failed (${response.status})`);
+        
+        // Custom handling for authentication errors
+        if (response.status === 401 || (data.error && data.error.includes('authentication'))) {
+          throw new Error('Your Google session has expired. Please log out and sign in again to refresh your permissions.');
+        }
+        
+        throw new Error(data.details || data.error || `Delete failed (${response.status})`);
       }
       await fetchFiles();
     } catch (err: any) {
@@ -126,11 +138,16 @@ export const useGoogleDrive = (
   const renameFile = async (fileId: string, newName: string) => {
     setLoading(true);
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (googleAccessToken) {
+        headers['Authorization'] = `Bearer ${googleAccessToken}`;
+      }
+
       const response = await fetch(`/api/drive/files/${fileId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({ name: newName }),
       });
 

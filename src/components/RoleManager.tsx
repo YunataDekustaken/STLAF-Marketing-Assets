@@ -67,9 +67,9 @@ export const RoleManager = ({ addNotification }: { addNotification: any }) => {
     const q2 = query(collection(db, 'users'), where('status', '==', 'pending'));
     const unsubscribe2 = onSnapshot(q2, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
-        id: doc.id,
+        uid: doc.id,
         ...doc.data()
-      })) as UserProfile[];
+      })) as any as UserProfile[];
       setPendingUsers(data);
       setPendingLoading(false);
     });

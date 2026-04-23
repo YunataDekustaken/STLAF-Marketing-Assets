@@ -162,7 +162,7 @@ export const AssetGallery: React.FC<AssetGalleryProps> = ({
             <Download className="w-4 h-4" />
           </a>
         )}
-        {userRole !== 'department' && (
+        {userRole === 'marketing_supervisor' && (
           <a
             href={file.webViewLink}
             target="_blank"
@@ -291,7 +291,7 @@ export const AssetGallery: React.FC<AssetGalleryProps> = ({
           >
             <Eye className={gridSize === 'small' ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
           </button>
-          {userRole !== 'department' && (
+          {userRole === 'marketing_supervisor' && (
             <a
               href={file.webViewLink}
               target="_blank"
@@ -481,7 +481,7 @@ export const AssetGallery: React.FC<AssetGalleryProps> = ({
                   Type: <span className="font-bold text-slate-700 uppercase">{previewFile.mimeType.split('/').pop()}</span>
                 </p>
                 <div className="flex items-center gap-3">
-                  {userRole !== 'department' && (
+                  {userRole === 'marketing_supervisor' && (
                     <a
                       href={previewFile.webViewLink}
                       target="_blank"
