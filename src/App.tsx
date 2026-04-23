@@ -94,7 +94,8 @@ function AppContent() {
 
           // Find notifications that are new since last process
           const oldIds = lastProcessedNotifRef.current.split(',');
-          const newNotifs = data.filter(n => !oldIds.includes(n.id) && !n.read);
+          // Filter for notifs not in oldIds, unread, AND not originated by the current user in this session
+          const newNotifs = data.filter(n => !oldIds.includes(n.id) && !n.read && n.originatorUid !== user.uid);
 
           newNotifs.forEach(latestNotif => {
             const toastId = latestNotif.id;
@@ -187,6 +188,7 @@ function AppContent() {
         type,
         read: false,
         userId: user?.uid || 'guest',
+        originatorUid: user?.uid,
         file: file ? { id: file.id, name: file.name, mimeType: file.mimeType } : null
       };
       persistenceService.addNotification(newNotification);

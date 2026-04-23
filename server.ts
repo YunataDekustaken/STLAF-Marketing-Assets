@@ -151,7 +151,13 @@ async function startServer() {
       res.json(response.data);
     } catch (error: any) {
       console.error('[API] Drive Upload Error:', error.message || error);
-      res.status(500).json({ error: error.message || 'Internal Server Error during Upload' });
+      const serviceAccountEmail = getDriveClient().credentials?.client_email || 'the service account';
+      res.status(500).json({ 
+        error: error.message || 'Internal Server Error during Upload',
+        details: error.message?.includes('sufficient permissions') 
+          ? `Permission Error: To upload files here, ensure the Service Account (${serviceAccountEmail}) has 'Editor' access to this folder.`
+          : undefined
+      });
     }
   });
 
@@ -159,22 +165,48 @@ async function startServer() {
   app.patch('/api/drive/files/:fileId', async (req, res) => {
     const { fileId } = req.params;
     const { name } = req.body;
+    const authHeader = req.headers.authorization;
+    const userAccessToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
+
+    console.log(`[API] Attempting to rename/patch file: ${fileId} to "${name}"`);
 
     try {
-      const authHeader = req.headers.authorization;
-      const userAccessToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
+      // --- USER TOKEN ATTEMPT ---
+      if (userAccessToken && userAccessToken !== 'null' && userAccessToken !== 'undefined') {
+        try {
+          console.log(`[API] Trying rename (User Token) for ${fileId}...`);
+          const userDrive = getDriveClient(userAccessToken);
+          const response = await userDrive.files.update({
+            fileId,
+            requestBody: { name },
+            fields: 'id, name',
+            supportsAllDrives: true,
+          });
+          console.log('[API] Success: Renamed by User');
+          return res.json(response.data);
+        } catch (err: any) {
+          console.log(`[API] User rename skipped: ${err.message}`);
+        }
+      }
 
-      const drive = getDriveClient(userAccessToken);
-      const response = await drive.files.update({
+      // --- SERVICE ACCOUNT FALLBACK ---
+      console.log('[API] Falling back to Service Account for rename task...');
+      const adminDrive = getDriveClient();
+      const response = await adminDrive.files.update({
         fileId,
         requestBody: { name },
         fields: 'id, name',
         supportsAllDrives: true,
       });
+      console.log('[API] Success: Renamed by System');
       res.json(response.data);
     } catch (error: any) {
-      console.error('Drive Rename Error:', error.message);
-      res.status(500).json({ error: error.message });
+      console.error('[API] Drive Rename Final Error:', error.message);
+      const serviceAccountEmail = getDriveClient().credentials?.client_email || 'the service account';
+      res.status(500).json({ 
+        error: `Rename Failed: ${error.message}`,
+        details: `To approve/rename files uploaded by others, the Service Account (${serviceAccountEmail}) must be given 'Editor' permissions on the folder/file.`
+      });
     }
   });
 
@@ -193,17 +225,17 @@ async function startServer() {
         
         // Step 1: User Permanent Delete
         try {
-          console.log(`[API] Step 1: Trying permanent delete (User) for ${fileId}...`);
+          console.log(`[API] Step 1: Trying permanent delete (User Token) for ${fileId}...`);
           await userDrive.files.delete({ fileId, supportsAllDrives: true });
           console.log('[API] Success: Permanently deleted by User');
           return res.json({ success: true, method: 'user_delete' });
         } catch (err: any) {
-          console.warn(`[API] Step 1 failed: ${err.message}`);
+          console.log(`[API] Step 1 (User Delete) skipped: ${err.message}`);
         }
 
         // Step 2: User Move to Trash
         try {
-          console.log(`[API] Step 2: Trying to trash (User) for ${fileId}...`);
+          console.log(`[API] Step 2: Trying to trash (User Token) for ${fileId}...`);
           await userDrive.files.update({
             fileId,
             requestBody: { trashed: true },
@@ -212,14 +244,14 @@ async function startServer() {
           console.log('[API] Success: Trashed by User');
           return res.json({ success: true, method: 'user_trash' });
         } catch (err: any) {
-          console.warn(`[API] Step 2 failed: ${err.message}`);
+          console.log(`[API] Step 2 (User Trash) skipped: ${err.message}`);
         }
 
         // Step 3: User Untether (If folderId provided)
         const qFolderId = req.query.folderId as string;
         if (qFolderId && qFolderId !== 'undefined' && qFolderId !== 'null') {
           try {
-            console.log(`[API] Step 3: Trying to untether from folder ${qFolderId} (User)...`);
+            console.log(`[API] Step 3: Trying to untether from folder ${qFolderId} (User Token)...`);
             await userDrive.files.update({
               fileId,
               removeParents: qFolderId,
@@ -228,27 +260,28 @@ async function startServer() {
             console.log('[API] Success: Unlinked by User');
             return res.json({ success: true, method: 'user_untether' });
           } catch (err: any) {
-            console.warn(`[API] Step 3 failed: ${err.message}`);
+            console.log(`[API] Step 3 (User Untether) skipped: ${err.message}`);
           }
         }
       }
 
       // --- SERVICE ACCOUNT ATTEMPTS ---
+      console.log('[API] Falling back to Service Account for deletion task...');
       const adminDrive = getDriveClient();
 
       // Step 4: Service Permanent Delete
       try {
-        console.log(`[API] Step 4: Trying permanent delete (System) for ${fileId}...`);
+        console.log(`[API] Step 4: Trying permanent delete (Service Account) for ${fileId}...`);
         await adminDrive.files.delete({ fileId, supportsAllDrives: true });
         console.log('[API] Success: Permanently deleted by System');
         return res.json({ success: true, method: 'system_delete' });
       } catch (err: any) {
-        console.warn(`[API] Step 4 failed: ${err.message}`);
+        console.log(`[API] Step 4 (System Delete) skipped: ${err.message}`);
       }
 
       // Step 5: Service Move to Trash
       try {
-        console.log(`[API] Step 5: Trying to trash (System) for ${fileId}...`);
+        console.log(`[API] Step 5: Trying to trash (Service Account) for ${fileId}...`);
         await adminDrive.files.update({
           fileId,
           requestBody: { trashed: true },
@@ -257,14 +290,14 @@ async function startServer() {
         console.log('[API] Success: Trashed by System');
         return res.json({ success: true, method: 'system_trash' });
       } catch (err: any) {
-        console.warn(`[API] Step 5 failed: ${err.message}`);
+        console.log(`[API] Step 5 (System Trash) skipped: ${err.message}`);
       }
 
       // Step 6: Service Untether (Targeted & Discovery)
       const qFolderId = req.query.folderId as string;
       if (qFolderId && qFolderId !== 'undefined' && qFolderId !== 'null') {
         try {
-          console.log(`[API] Step 6a: Trying to untether from folder ${qFolderId} (System)...`);
+          console.log(`[API] Step 6a: Trying to untether from folder ${qFolderId} (Service Account)...`);
           await adminDrive.files.update({
             fileId,
             removeParents: qFolderId,
@@ -273,7 +306,7 @@ async function startServer() {
           console.log('[API] Success: Unlinked by System (Targeted)');
           return res.json({ success: true, method: 'system_untether_targeted' });
         } catch (err: any) {
-          console.warn(`[API] Step 6a failed: ${err.message}`);
+          console.log(`[API] Step 6a (System Untether Targeted) skipped: ${err.message}`);
         }
       }
 
@@ -282,11 +315,12 @@ async function startServer() {
         console.log(`[API] Step 6b: Trying discovery-based untether for ${fileId}...`);
         const fileInfo = await adminDrive.files.get({
           fileId,
-          fields: 'parents',
+          fields: 'parents, name',
           supportsAllDrives: true
         });
         const parents = fileInfo.data.parents || [];
         if (parents.length > 0) {
+          console.log(`[API] Discovered ${parents.length} parents for file "${fileInfo.data.name}". Attempting removal...`);
           await adminDrive.files.update({
             fileId,
             removeParents: parents.join(','),
@@ -294,17 +328,24 @@ async function startServer() {
           });
           console.log('[API] Success: Unlinked by System (Discovered)');
           return res.json({ success: true, method: 'system_untether_discovered' });
+        } else {
+          console.log('[API] No parents found for discovery-based untether.');
         }
       } catch (err: any) {
-        console.warn(`[API] Step 6b failed: ${err.message}`);
+        console.log(`[API] Step 6b (System Untether Discovery) skipped: ${err.message}`);
       }
 
-      throw new Error("All deletion and unlinking attempts failed. This usually happens if the file owner has not granted Editor permissions to the portal or folder.");
+      throw new Error("All deletion and unlinking attempts failed. This happens if neither the current user nor the service account has 'Editor' permissions on the file or its parent folder.");
     } catch (error: any) {
       console.error('[API] Drive Delete Final Error:', error.message);
+      const serviceAccountEmail = getDriveClient().credentials?.client_email || 'the service account';
       res.status(500).json({ 
-        error: `Deletion Failed: ${error.message}`,
-        details: "Permissions Constraint: In Personal Shares, only the original uploader can delete a file. However, if you are a manager, ensure the Service Account has 'Editor' access to the folder so it can at least remove the file from the portal view."
+        error: `Action Failed: ${error.message}`,
+        details: `Permission Constraint: To manage files uploaded by others, you must ensure two things: 
+1. Your Google Account has edit access to the folder.
+2. The Service Account (${serviceAccountEmail}) has 'Editor' access to the folder.
+
+If using a Personal Drive (non-Shared), only the owner can permanently delete. Otherwise, with 'Editor' access, the portal can at least 'Unlink' the file to remove it from this view.`
       });
     }
   });

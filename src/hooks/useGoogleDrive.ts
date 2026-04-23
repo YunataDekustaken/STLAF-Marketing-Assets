@@ -84,7 +84,7 @@ export const useGoogleDrive = (
       }
 
       if (!response.ok) {
-        throw new Error(data.error || `Upload failed (${response.status})`);
+        throw new Error(data.details || data.error || `Upload failed (${response.status})`);
       }
       
       await fetchFiles();
@@ -159,7 +159,7 @@ export const useGoogleDrive = (
         } catch (e) {
           throw new Error(`Rename failed (${response.status}): ${text.substring(0, 100)}`);
         }
-        throw new Error(data.error || `Rename failed (${response.status})`);
+        throw new Error(data.details || data.error || `Rename failed (${response.status})`);
       }
       await fetchFiles();
     } catch (err: any) {
