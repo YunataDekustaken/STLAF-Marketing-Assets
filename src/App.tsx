@@ -77,10 +77,42 @@ function AppContent() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [toasts, setToasts] = useState<{id: string, message: string, type: 'success' | 'info' | 'error'}[]>([]);
 
+  const lastProcessedNotifRef = useRef<string | null>(null);
+
   // Subscribe to real-time notifications from Firestore
   useEffect(() => {
     if (user) {
       const unsubscribe = persistenceService.subscribeToNotifications(user.uid, (data) => {
+        // If there's new data and it's not the initial load, show a toast for new notifications
+        if (data.length > 0) {
+          // If this is the initial load, just record the IDs and don't toast
+          if (!lastProcessedNotifRef.current) {
+            lastProcessedNotifRef.current = data.map(n => n.id).join(',');
+            setNotifications(data);
+            return;
+          }
+
+          // Find notifications that are new since last process
+          const oldIds = lastProcessedNotifRef.current.split(',');
+          const newNotifs = data.filter(n => !oldIds.includes(n.id) && !n.read);
+
+          newNotifs.forEach(latestNotif => {
+            const toastId = latestNotif.id;
+            setToasts(prev => [...prev, { 
+              id: toastId, 
+              message: latestNotif.message, 
+              type: latestNotif.type === 'warning' ? 'error' : (latestNotif.type || 'info') 
+            }]);
+            setTimeout(() => {
+              setToasts(prev => prev.filter(t => t.id !== toastId));
+            }, 5000);
+          });
+          
+          lastProcessedNotifRef.current = data.map(n => n.id).join(',');
+        } else {
+          lastProcessedNotifRef.current = 'empty';
+        }
+        
         setNotifications(data);
       });
       return () => unsubscribe();
@@ -130,7 +162,7 @@ function AppContent() {
   const [pinnedAssets, setPinnedAssets] = useState<any[]>([]);
 
   const [notificationSettings, setNotificationSettings] = useState({
-    driveUploads: true,
+    memberUploads: true,
     fileDownloads: true,
     connectivityIssues: true,
     storageQuota: false,

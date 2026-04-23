@@ -143,6 +143,47 @@ export const persistenceService = {
     return stored ? JSON.parse(stored) : [];
   },
 
+  // In persistenceService.ts
+  async notifySupervisors(notification: any) {
+    if (isFirebaseConfigured) {
+      console.log('Starting supervisor notification process...');
+      try {
+        const { getDocs, query, collection, where, addDoc, serverTimestamp } = await import('firebase/firestore');
+        const supervisorsQuery = query(
+          collection(db, 'users'), 
+          where('role', '==', 'marketing_supervisor'),
+          where('status', '==', 'active')
+        );
+        const snapshot = await getDocs(supervisorsQuery);
+        console.log(`Found ${snapshot.size} active supervisors to notify.`);
+        
+        const promises = snapshot.docs.map(supervisorDoc => {
+          const supervisorData = supervisorDoc.data();
+          // Only notify if they have the setting enabled (default to true)
+          const settings = supervisorData.notificationSettings || {};
+          console.log(`Checking settings for supervisor ${supervisorDoc.id}:`, settings);
+          
+          if (settings.memberUploads !== false) {
+            console.log(`Sending notification to supervisor: ${supervisorDoc.id}`);
+            return addDoc(collection(db, 'notifications'), {
+              ...notification,
+              userId: supervisorDoc.id,
+              createdAt: serverTimestamp()
+            });
+          }
+          console.log(`Supervisor ${supervisorDoc.id} has disabled member upload notifications.`);
+          return Promise.resolve();
+        });
+        await Promise.all(promises);
+        console.log('Supervisor notification process complete.');
+      } catch (error) {
+        console.error('Error notifying supervisors:', error);
+      }
+    } else {
+      console.log('Firebase not configured, skipping supervisor notifications.');
+    }
+  },
+
   subscribeToNotifications(userId: string | null, callback: (notifs: any[]) => void) {
     if (isFirebaseConfigured) {
       const targetUserId = userId || 'guest_user';

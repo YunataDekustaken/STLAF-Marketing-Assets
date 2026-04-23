@@ -21,6 +21,7 @@ import { GoogleAuth } from './GoogleAuth';
 import { AssetGallery } from './AssetGallery';
 import { UploadZone } from './UploadZone';
 import { useGoogleDrive, ROOT_FOLDER_ID } from '../hooks/useGoogleDrive';
+import { persistenceService } from '../services/persistenceService';
 
 export const AssetsView = ({ 
   addNotification,
@@ -100,19 +101,30 @@ export const AssetsView = ({
 
   const uploadFile = async (file: File) => {
     try {
-      const isMember = userRole === 'marketing_member';
-      const customName = isMember ? `[PENDING] ${file.name}` : file.name;
+      const isSupervisor = userRole === 'marketing_supervisor';
+      const customName = !isSupervisor ? `[PENDING] ${file.name}` : file.name;
       
-      const statusMsg = isMember ? `Uploading ${file.name} for approval...` : `Uploading ${file.name}...`;
-      addNotification('Upload Started', statusMsg, 'info', 'driveUploads');
+      const statusMsg = !isSupervisor ? `Uploading ${file.name} for approval...` : `Uploading ${file.name}...`;
+      addNotification('Upload Started', statusMsg, 'info', 'memberUploads');
       
       await originalUpload(file, customName);
       
-      const successMsg = isMember 
+      const successMsg = !isSupervisor 
         ? `Successfully submitted ${file.name} for approval.` 
         : `Successfully uploaded ${file.name}`;
       
-      addNotification('Upload Successful', successMsg, 'success', 'driveUploads');
+      addNotification('Upload Successful', successMsg, 'success', 'memberUploads');
+
+      // Notify supervisors if a non-supervisor uploaded a file
+      if (!isSupervisor) {
+        console.log('Notifying supervisors of new upload:', file.name);
+        persistenceService.notifySupervisors({
+          title: 'New Asset Uploaded',
+          message: `${file.name} has been uploaded and is awaiting approval.`,
+          type: 'info',
+          category: 'upload'
+        });
+      }
     } catch (err: any) {
       let friendlyError = err.message;
       if (err.message.includes('Service Accounts do not have storage quota')) {
@@ -120,7 +132,7 @@ export const AssetsView = ({
       } else if (err.message.includes('insufficient authentication scopes')) {
         friendlyError = "Access Denied: Your current session doesn't have Google Drive upload permissions. Please log out and sign in again, and MUST ensure you check the permission box for Google Drive access.";
       }
-      addNotification('Upload Failed', `Failed to upload ${file.name}: ${friendlyError}`, 'warning', 'driveUploads');
+      addNotification('Upload Failed', `Failed to upload ${file.name}: ${friendlyError}`, 'warning', 'memberUploads');
     }
   };
 
