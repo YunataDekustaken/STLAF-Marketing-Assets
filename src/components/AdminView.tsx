@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleAuth } from './GoogleAuth';
-import { Cloud, RefreshCw, Users as UsersIcon, UserCog, Upload } from 'lucide-react';
+import { Cloud, RefreshCw, Users as UsersIcon, UserCog } from 'lucide-react';
 import { RoleManager } from './RoleManager';
 
 export const AdminView = ({ 
@@ -28,7 +28,7 @@ export const AdminView = ({
   onUpdateQuickLinks
 }: { 
   notificationSettings: { 
-    memberUploads: boolean, 
+    driveUploads: boolean, 
     fileDownloads: boolean,
     connectivityIssues: boolean, 
     storageQuota: boolean, 
@@ -200,22 +200,22 @@ export const AdminView = ({
                     </button>
                   </div>
 
-                  {/* Member Uploads */}
+                  {/* New Drive Uploads */}
                   <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-white rounded-lg shadow-sm">
-                        <Upload className="w-4 h-4 text-emerald-500" />
+                        <Cloud className="w-4 h-4 text-emerald-500" />
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-slate-900">Member Uploads</p>
-                        <p className="text-[10px] text-slate-500">Notify supervisors when members upload new files</p>
+                        <p className="text-sm font-bold text-slate-900">New Drive Uploads</p>
+                        <p className="text-[10px] text-slate-500">Alert team when new materials appear in Drive</p>
                       </div>
                     </div>
                     <button 
-                      onClick={() => setLocalSettings(prev => ({ ...prev, memberUploads: !prev.memberUploads }))}
-                      className={`shrink-0 w-11 h-6 p-1 rounded-full transition-colors relative flex items-center ${localSettings.memberUploads ? 'bg-amber-500' : 'bg-slate-300'}`}
+                      onClick={() => setLocalSettings(prev => ({ ...prev, driveUploads: !prev.driveUploads }))}
+                      className={`shrink-0 w-11 h-6 p-1 rounded-full transition-colors relative flex items-center ${localSettings.driveUploads ? 'bg-amber-500' : 'bg-slate-300'}`}
                     >
-                      <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-200 transform ${localSettings.memberUploads ? 'translate-x-5' : 'translate-x-0'}`} />
+                      <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-200 transform ${localSettings.driveUploads ? 'translate-x-5' : 'translate-x-0'}`} />
                     </button>
                   </div>
 

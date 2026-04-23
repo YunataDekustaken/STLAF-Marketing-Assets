@@ -39,7 +39,7 @@ interface RoleAssignment {
   assignedAt: any;
 }
 
-const DEPARTMENTS = ['Sales', 'Marketing', 'HR', 'IT', 'Finance', 'Operations', 'Corporate'];
+const DEPARTMENTS = ['Accounting', 'Corporate', 'HR', 'Litigation', 'Operations'];
 
 export const RoleManager = ({ addNotification }: { addNotification: any }) => {
   const [assignments, setAssignments] = useState<RoleAssignment[]>([]);

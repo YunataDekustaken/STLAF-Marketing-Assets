@@ -7,7 +7,7 @@ export type ViewMode = 'assets' | 'admin';
 
 export type UserRole = 'marketing_supervisor' | 'marketing_member' | 'department';
 
-export type Department = 'Sales' | 'Marketing' | 'HR' | 'IT' | 'Finance' | 'Operations' | 'Corporate';
+export type Department = 'Accounting' | 'Corporate' | 'HR' | 'Litigation' | 'Operations' | 'Marketing';
 
 export type UserStatus = 'active' | 'pending' | 'blocked';
 

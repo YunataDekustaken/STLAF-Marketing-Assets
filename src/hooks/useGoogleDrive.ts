@@ -32,7 +32,7 @@ export const useGoogleDrive = (
         email: healthData.service_account_email
       });
 
-      const response = await fetch(`/api/drive/files?folderId=${currentFolderId}&t=${Date.now()}`);
+      const response = await fetch(`/api/drive/files?folderId=${currentFolderId}`);
       const text = await response.text();
       
       let data;
@@ -84,17 +84,6 @@ export const useGoogleDrive = (
       }
 
       if (!response.ok) {
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch (e) {
-          throw new Error(`Upload failed (${response.status}): ${text.substring(0, 50)}`);
-        }
-        
-        if (response.status === 401 || response.status === 403 || data.needsReauth) {
-          throw new Error('Your Google session has expired or has insufficient permissions. Please log out and sign in again, ensuring you check the Google Drive access box.');
-        }
-
         throw new Error(data.error || `Upload failed (${response.status})`);
       }
       
@@ -168,14 +157,9 @@ export const useGoogleDrive = (
         try {
           data = JSON.parse(text);
         } catch (e) {
-          throw new Error(`Rename failed (${response.status}): ${text.substring(0, 50)}`);
+          throw new Error(`Rename failed (${response.status}): ${text.substring(0, 100)}`);
         }
-
-        if (response.status === 401 || response.status === 403 || data.needsReauth) {
-          throw new Error('Your Google session has expired or has insufficient permissions. Please log out and sign in again, ensuring you check the Google Drive access box.');
-        }
-
-        throw new Error(data.details || data.error || `Rename failed (${response.status})`);
+        throw new Error(data.error || `Rename failed (${response.status})`);
       }
       await fetchFiles();
     } catch (err: any) {
