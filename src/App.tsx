@@ -492,7 +492,7 @@ function AppContent() {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-40">
           <h1 className="text-lg font-bold text-slate-800">
-            {viewMode === 'assets' ? 'Marketing Assets' : 'Admin Center'}
+            {viewMode === 'assets' ? 'STLAF Marketing Assets' : 'Admin Center'}
           </h1>
           <div className="flex items-center gap-6">
             
