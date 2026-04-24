@@ -164,7 +164,12 @@ app.delete('/api/drive/files/:fileId', async (req, res) => {
   const userAccessToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
   const qFolderId = req.query.folderId as string;
 
-  console.log(`[DELETE] Request for fileId: ${fileId}, folderId: ${qFolderId}`);
+  // Normalize folderId
+  const targetFolderId = (!qFolderId || qFolderId === 'undefined' || qFolderId === 'null') 
+    ? ROOT_FOLDER_ID 
+    : qFolderId;
+
+  console.log(`[DELETE] Request for fileId: ${fileId}, targetFolderId: ${targetFolderId}`);
   console.log(`[DELETE] Has user token: ${!!(userAccessToken && userAccessToken !== 'null')}`);
 
   const errors: string[] = [];
@@ -173,11 +178,11 @@ app.delete('/api/drive/files/:fileId', async (req, res) => {
   const tryOp = async (label: string, fn: () => Promise<any>) => {
     try {
       const result = await fn();
-      console.log(`[DELETE] SUCCESS via ${label}`);
+      console.log(`[DELETE] SUCCESS ${label} | fileId: ${fileId}`);
       return { success: true, method: label, result };
     } catch (err: any) {
       const msg = err?.errors?.[0]?.message || err.message || 'unknown error';
-      console.log(`[DELETE] FAILED ${label}: ${msg}`);
+      console.log(`[DELETE] FAILED ${label} | fileId: ${fileId} | Error: ${msg}`);
       errors.push(`${label}: ${msg}`);
       return null;
     }
@@ -188,49 +193,57 @@ app.delete('/api/drive/files/:fileId', async (req, res) => {
     if (userAccessToken && userAccessToken !== 'null' && userAccessToken !== 'undefined') {
       const userDrive = getDriveClient(userAccessToken);
 
-      // 1. Permanent delete with user token
+      // 1. User Permanent Delete
       const r1 = await tryOp('user_permanent_delete', () =>
         userDrive.files.delete({ fileId, supportsAllDrives: true })
       );
       if (r1) return res.json(r1);
 
-      // 2. Trash with user token
+      // 2. User Trash
       const r2 = await tryOp('user_trash', () =>
         userDrive.files.update({ fileId, requestBody: { trashed: true }, supportsAllDrives: true })
       );
       if (r2) return res.json(r2);
+
+      // 3. User Untether (Remove from folder)
+      const r3 = await tryOp('user_remove_from_folder', () =>
+        userDrive.files.update({
+          fileId,
+          removeParents: targetFolderId,
+          supportsAllDrives: true
+        })
+      );
+      if (r3) return res.json(r3);
     }
 
     // --- SERVICE ACCOUNT ATTEMPTS ---
     const adminDrive = getDriveClient();
 
-    // 3. Permanent delete with service account
-    const r3 = await tryOp('system_permanent_delete', () =>
-      adminDrive.files.delete({ fileId, supportsAllDrives: true })
-    );
-    if (r3) return res.json(r3);
-
-    // 4. Trash with service account
-    const r4 = await tryOp('system_trash', () =>
-      adminDrive.files.update({ fileId, requestBody: { trashed: true }, supportsAllDrives: true })
+    // 4. System Untether (Targeted) - Often works when delete/trash fails due to ownership
+    const r4 = await tryOp('system_remove_from_folder', () =>
+      adminDrive.files.update({
+        fileId,
+        removeParents: targetFolderId,
+        supportsAllDrives: true,
+        fields: 'id, parents'
+      })
     );
     if (r4) return res.json(r4);
 
-    // 5. Remove from parent folder only (Targeted)
-    if (qFolderId && qFolderId !== 'undefined' && qFolderId !== 'null') {
-      const r5 = await tryOp('system_remove_from_folder', () =>
-        adminDrive.files.update({
-          fileId,
-          removeParents: qFolderId,
-          supportsAllDrives: true,
-          fields: 'id, parents'
-        })
-      );
-      if (r5) return res.json(r5);
-    }
+    // 5. System Trash
+    const r5 = await tryOp('system_trash', () =>
+      adminDrive.files.update({ fileId, requestBody: { trashed: true }, supportsAllDrives: true })
+    );
+    if (r5) return res.json(r5);
 
-    // 6. Discovery Untether
-    const r6 = await tryOp('system_discovery_untether', async () => {
+    // 6. System Permanent Delete
+    const r6 = await tryOp('system_permanent_delete', () =>
+      adminDrive.files.delete({ fileId, supportsAllDrives: true })
+    );
+    if (r6) return res.json(r6);
+
+    // 7. Discovery Untether (Remove from ALL parents)
+    const r7 = await tryOp('system_discovery_untether', async () => {
       const fileInfo = await adminDrive.files.get({
         fileId,
         fields: 'parents',
@@ -246,10 +259,10 @@ app.delete('/api/drive/files/:fileId', async (req, res) => {
       }
       throw new Error("File has no parents to remove.");
     });
-    if (r6) return res.json(r6);
+    if (r7) return res.json(r7);
 
     // All failed
-    console.log(`[DELETE] All attempts failed. Errors:`, errors);
+    console.log(`[DELETE] All attempts failed for ${fileId}. Errors:`, errors);
 
     let serviceEmail = 'the service account email found in your environment variables';
     try {
@@ -271,7 +284,7 @@ app.delete('/api/drive/files/:fileId', async (req, res) => {
     });
 
   } catch (error: any) {
-    console.log(`[DELETE] Unexpected error:`, error.message);
+    console.log(`[DELETE] Unexpected error for ${fileId}:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });

@@ -64,11 +64,20 @@ export const AssetsView = ({
   const apiEnablementLink = error?.match(/https:\/\/console\.developers\.google\.com\/[^\s]+/)?.[0];
 
   const displayFiles = React.useMemo(() => {
-    // If user is a member, hide [PENDING] files
+    // Filter by role logic
+    let filtered = files;
     if (userRole === 'marketing_member') {
-      return files.filter(f => !f.name.startsWith('[PENDING] '));
+      filtered = files.filter(f => !f.name.startsWith('[PENDING] '));
     }
-    return files;
+    
+    // Deduplicate by ID to prevent React key warnings (Google Drive API can sometimes return duplicates 
+    // especially when dealing with shortcuts or shared items with includeItemsFromAllDrives)
+    const seen = new Set<string>();
+    return filtered.filter(f => {
+      if (seen.has(f.id)) return false;
+      seen.add(f.id);
+      return true;
+    });
   }, [files, userRole]);
 
   const sortedFiles = React.useMemo(() => {
