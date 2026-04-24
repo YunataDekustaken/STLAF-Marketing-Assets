@@ -162,95 +162,75 @@ app.delete('/api/drive/files/:fileId', async (req, res) => {
   const { fileId } = req.params;
   const authHeader = req.headers.authorization;
   const userAccessToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
+  const qFolderId = req.query.folderId as string;
+
+  console.log(`[DELETE] Request for fileId: ${fileId}, folderId: ${qFolderId}`);
+  console.log(`[DELETE] Has user token: ${!!(userAccessToken && userAccessToken !== 'null')}`);
+
+  const errors: string[] = [];
+
+  // Helper to attempt a delete operation
+  const tryOp = async (label: string, fn: () => Promise<any>) => {
+    try {
+      const result = await fn();
+      console.log(`[DELETE] SUCCESS via ${label}`);
+      return { success: true, method: label, result };
+    } catch (err: any) {
+      const msg = err?.errors?.[0]?.message || err.message || 'unknown error';
+      console.log(`[DELETE] FAILED ${label}: ${msg}`);
+      errors.push(`${label}: ${msg}`);
+      return null;
+    }
+  };
 
   try {
     // --- USER TOKEN ATTEMPTS ---
     if (userAccessToken && userAccessToken !== 'null' && userAccessToken !== 'undefined') {
       const userDrive = getDriveClient(userAccessToken);
-      
-      // Step 1: User Permanent Delete
-      try {
-        console.log(`[API] Step 1: Trying permanent delete (User) for ${fileId}...`);
-        await userDrive.files.delete({ fileId, supportsAllDrives: true });
-        return res.json({ success: true, method: 'user_delete' });
-      } catch (err: any) {
-        console.warn(`[API] Step 1 failed: ${err.message}`);
-      }
 
-      // Step 2: User Trash
-      try {
-        console.log(`[API] Step 2: Trying trash (User) for ${fileId}...`);
-        await userDrive.files.update({
-          fileId,
-          requestBody: { trashed: true },
-          supportsAllDrives: true
-        });
-        return res.json({ success: true, method: 'user_trash' });
-      } catch (err: any) {
-        console.warn(`[API] Step 2 failed: ${err.message}`);
-      }
+      // 1. Permanent delete with user token
+      const r1 = await tryOp('user_permanent_delete', () =>
+        userDrive.files.delete({ fileId, supportsAllDrives: true })
+      );
+      if (r1) return res.json(r1);
 
-      // Step 3: User Untether
-      const qFolderId = req.query.folderId as string;
-      if (qFolderId && qFolderId !== 'undefined' && qFolderId !== 'null') {
-        try {
-          console.log(`[API] Step 3: Trying untether (User) for ${fileId}`);
-          await userDrive.files.update({
-            fileId,
-            removeParents: qFolderId,
-            supportsAllDrives: true
-          });
-          return res.json({ success: true, method: 'user_untether' });
-        } catch (err: any) {
-          console.warn(`[API] Step 3 failed: ${err.message}`);
-        }
-      }
+      // 2. Trash with user token
+      const r2 = await tryOp('user_trash', () =>
+        userDrive.files.update({ fileId, requestBody: { trashed: true }, supportsAllDrives: true })
+      );
+      if (r2) return res.json(r2);
     }
 
     // --- SERVICE ACCOUNT ATTEMPTS ---
     const adminDrive = getDriveClient();
 
-    // Step 4: Service Permanent Delete
-    try {
-      console.log(`[API] Step 4: Trying permanent delete (System) for ${fileId}...`);
-      await adminDrive.files.delete({ fileId, supportsAllDrives: true });
-      return res.json({ success: true, method: 'system_delete' });
-    } catch (err: any) {
-      console.warn(`[API] Step 4 failed: ${err.message}`);
-    }
+    // 3. Permanent delete with service account
+    const r3 = await tryOp('system_permanent_delete', () =>
+      adminDrive.files.delete({ fileId, supportsAllDrives: true })
+    );
+    if (r3) return res.json(r3);
 
-    // Step 5: Service Trash
-    try {
-      console.log(`[API] Step 5: Trying trash (System) for ${fileId}...`);
-      await adminDrive.files.update({
-        fileId,
-        requestBody: { trashed: true },
-        supportsAllDrives: true
-      });
-      return res.json({ success: true, method: 'system_trash' });
-    } catch (err: any) {
-      console.warn(`[API] Step 5 failed: ${err.message}`);
-    }
+    // 4. Trash with service account
+    const r4 = await tryOp('system_trash', () =>
+      adminDrive.files.update({ fileId, requestBody: { trashed: true }, supportsAllDrives: true })
+    );
+    if (r4) return res.json(r4);
 
-    // Step 6: Service Untether
-    const qFolderId = req.query.folderId as string;
+    // 5. Remove from parent folder only (Targeted)
     if (qFolderId && qFolderId !== 'undefined' && qFolderId !== 'null') {
-      try {
-        console.log(`[API] Step 6a: Trying targeted untether (System) for ${fileId}`);
-        await adminDrive.files.update({
+      const r5 = await tryOp('system_remove_from_folder', () =>
+        adminDrive.files.update({
           fileId,
           removeParents: qFolderId,
-          supportsAllDrives: true
-        });
-        return res.json({ success: true, method: 'system_untether_targeted' });
-      } catch (err: any) {
-        console.warn(`[API] Step 6a failed: ${err.message}`);
-      }
+          supportsAllDrives: true,
+          fields: 'id, parents'
+        })
+      );
+      if (r5) return res.json(r5);
     }
 
-    // Discovery Untether
-    try {
-      console.log(`[API] Step 6b: Trying discovery untether (System) for ${fileId}`);
+    // 6. Discovery Untether
+    const r6 = await tryOp('system_discovery_untether', async () => {
       const fileInfo = await adminDrive.files.get({
         fileId,
         fields: 'parents',
@@ -258,24 +238,41 @@ app.delete('/api/drive/files/:fileId', async (req, res) => {
       });
       const parents = fileInfo.data.parents || [];
       if (parents.length > 0) {
-        await adminDrive.files.update({
+        return await adminDrive.files.update({
           fileId,
           removeParents: parents.join(','),
           supportsAllDrives: true
         });
-        return res.json({ success: true, method: 'system_untether_discovered' });
       }
-    } catch (err: any) {
-      console.warn(`[API] Step 6b failed: ${err.message}`);
-    }
-
-    throw new Error("All deletion attempts failed. Personal drive permissions are strictly owner-only.");
-  } catch (error: any) {
-    console.error('[API] Drive Delete Final Error:', error.message);
-    res.status(500).json({ 
-      error: `Deletion Failed: ${error.message}`,
-      details: "In Personal Drives, only the file OWNER can delete it. Ensure Service Account has 'Editor' access to the folder."
+      throw new Error("File has no parents to remove.");
     });
+    if (r6) return res.json(r6);
+
+    // All failed
+    console.log(`[DELETE] All attempts failed. Errors:`, errors);
+
+    let serviceEmail = 'the service account email found in your environment variables';
+    try {
+      const key = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.google_service_account_json;
+      if (key) {
+        const creds = JSON.parse(key.trim().startsWith('{') ? key : Buffer.from(key, 'base64').toString());
+        serviceEmail = creds.client_email;
+      }
+    } catch (e) {}
+
+    return res.status(500).json({
+      error: 'Permission Denied',
+      details: errors,
+      hint: `Google Drive restriction: Standard users cannot delete files they don't own. 
+      
+      To allow the portal to manage these files, you MUST:
+      1. Copy this email: ${serviceEmail}
+      2. Share your Drive folder with it as an 'Editor'.`
+    });
+
+  } catch (error: any) {
+    console.log(`[DELETE] Unexpected error:`, error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 

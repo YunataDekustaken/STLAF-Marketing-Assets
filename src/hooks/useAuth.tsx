@@ -33,7 +33,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(sessionStorage.getItem('google_drive_token'));
+  const getStoredToken = () => {
+    const token = sessionStorage.getItem('google_drive_token');
+    const expiry = sessionStorage.getItem('google_drive_token_expiry');
+    if (token && expiry && Date.now() < parseInt(expiry)) {
+      return token;
+    }
+    // Token expired or missing, clear it
+    if (token) {
+      sessionStorage.removeItem('google_drive_token');
+      sessionStorage.removeItem('google_drive_token_expiry');
+    }
+    return null;
+  };
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(getStoredToken());
 
   useEffect(() => {
     // If firebase config is completely generic dummy, auth might not work properly. 
@@ -155,6 +168,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (token) {
         setGoogleAccessToken(token);
         sessionStorage.setItem('google_drive_token', token);
+        sessionStorage.setItem('google_drive_token_expiry', (Date.now() + 3600 * 1000).toString()); // 1 hour
       }
     } finally {
       setIsAuthenticating(false);

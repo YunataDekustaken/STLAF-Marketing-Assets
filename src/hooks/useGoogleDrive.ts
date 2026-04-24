@@ -55,6 +55,7 @@ export const useGoogleDrive = (
   }, [currentFolderId]);
 
   const uploadFile = async (file: File, customName?: string) => {
+    setError(null);
     setLoading(true);
     try {
       const formData = new FormData();
@@ -98,6 +99,9 @@ export const useGoogleDrive = (
   };
 
   const deleteFile = async (fileId: string) => {
+    setError(null);
+    // Optimistically remove from UI immediately
+    setFiles(prev => prev.filter(f => f.id !== fileId));
     setLoading(true);
     try {
       const headers: Record<string, string> = {};
@@ -116,17 +120,34 @@ export const useGoogleDrive = (
         try {
           data = JSON.parse(text);
         } catch (e) {
+          await fetchFiles(); // restore correct state on failure
           throw new Error(`Delete failed (${response.status}): ${text.substring(0, 100)}`);
         }
-        
-        // Custom handling for authentication errors
+
         if (response.status === 401 || (data.error && data.error.includes('authentication'))) {
+          await fetchFiles();
           throw new Error('Your Google session has expired. Please log out and sign in again to refresh your permissions.');
         }
-        
+
+        await fetchFiles(); // restore correct state on failure
         throw new Error(data.details || data.error || `Delete failed (${response.status})`);
       }
-      await fetchFiles();
+
+      // Check which deletion method was used
+      let responseData: any = {};
+      try { responseData = JSON.parse(text); } catch (_) {}
+
+      const wasRealDelete = 
+        responseData.method === 'user_permanent_delete' || 
+        responseData.method === 'system_permanent_delete' ||
+        responseData.method === 'user_trash' ||
+        responseData.method === 'system_trash';
+  
+      if (!wasRealDelete) {
+        // Only for unlink/remove-from-folder: re-fetch after delay
+        setTimeout(() => fetchFiles(), 3000);
+      }
+      // For real deletes and trash: keep optimistic removal, no re-fetch
     } catch (err: any) {
       setError(err.message);
       throw err;
@@ -136,6 +157,7 @@ export const useGoogleDrive = (
   };
 
   const renameFile = async (fileId: string, newName: string) => {
+    setError(null);
     setLoading(true);
     try {
       const headers: Record<string, string> = {

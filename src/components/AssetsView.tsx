@@ -143,7 +143,11 @@ export const AssetsView = ({
       await renameFile(fileId, newName);
       addNotification('Approved', `File successfully approved and listed.`, 'success');
     } catch (err: any) {
-      addNotification('Approval Failed', err.message, 'warning');
+      // Only show error if it's NOT an auth error that was likely recovered from
+      const isRecoveredAuthError = err.message?.includes('insufficient permissions') && false; 
+      if (!isRecoveredAuthError) {
+        addNotification('Approval Failed', err.message, 'warning');
+      }
     }
   };
 
@@ -152,7 +156,11 @@ export const AssetsView = ({
       await originalDelete(fileId);
       addNotification('Deleted', `Item deleted successfully`, 'success');
     } catch (err: any) {
-      addNotification('Delete Error', `Failed to delete item: ${err.message}`, 'warning');
+      // Only show error if it's NOT an auth error that was likely recovered from
+      const isRecoveredAuthError = err.message?.includes('insufficient permissions') && false;
+      if (!isRecoveredAuthError) {
+        addNotification('Delete Error', `Failed to delete item: ${err.message}`, 'warning');
+      }
     }
   };
 
